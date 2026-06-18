@@ -1,0 +1,1091 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import styles from "./page.module.css";
+import {
+  apiBaseUrl,
+  ChatResponse,
+  DeleteSessionResponse,
+  KnowledgeBaseResponse,
+  MessageResponse,
+  SessionListResponse,
+  SessionMessagesResponse,
+  SessionResponse,
+  UserResponse,
+} from "../lib/api";
+import {
+  AuthError,
+  authFetch,
+  clearStoredAuth,
+  fetchCurrentUser,
+  getStoredAuth,
+} from "../lib/auth";
+
+const starterQuestions = [
+  "这个系统里谁负责控制流程走向？",
+  "LangGraph 在这个项目中起什么作用？",
+  "你好，你是谁？",
+];
+
+type StreamEvent = {
+  type: string;
+  data: Record<string, unknown>;
+};
+
+export default function HomePage() {
+  const router = useRouter();
+  const [question, setQuestion] = useState("");
+  const [topK, setTopK] = useState(4);
+  const [result, setResult] = useState<ChatResponse | null>(null);
+  const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [messages, setMessages] = useState<MessageResponse[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseResponse[]>([]);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState("");
+  const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [bootLoading, setBootLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [knowledgeBasePickerOpen, setKnowledgeBasePickerOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [sessionKeyword, setSessionKeyword] = useState("");
+  const [menuSessionId, setMenuSessionId] = useState("");
+
+  useEffect(() => {
+    void bootstrap();
+  }, []);
+
+  const currentSession = useMemo(
+    () => sessions.find((item) => item.id === currentSessionId) ?? null,
+    [currentSessionId, sessions],
+  );
+
+  const selectedKnowledgeBases = useMemo(
+    () => knowledgeBases.filter((item) => selectedKnowledgeBaseIds.includes(item.id)),
+    [knowledgeBases, selectedKnowledgeBaseIds],
+  );
+
+  const selectedKnowledgeBaseSummary = useMemo(() => {
+    if (selectedKnowledgeBaseIds.length === 0) {
+      return "\u5168\u90E8\u77E5\u8BC6\u5E93";
+    }
+    if (selectedKnowledgeBases.length === 0) {
+      return "\u672A\u5339\u914D\u5230\u77E5\u8BC6\u5E93";
+    }
+    return selectedKnowledgeBases.map((item) => item.name).join("\u3001");
+  }, [selectedKnowledgeBaseIds.length, selectedKnowledgeBases]);
+
+  const filteredSessions = useMemo(() => {
+    const keyword = sessionKeyword.trim().toLowerCase();
+    if (!keyword) {
+      return sessions;
+    }
+
+    return sessions.filter((session) => {
+      const title = session.title.toLowerCase();
+      const kb = (session.knowledge_base_name || "").toLowerCase();
+      return title.includes(keyword) || kb.includes(keyword);
+    });
+  }, [sessionKeyword, sessions]);
+
+  function buildTempMessage(
+    id: number,
+    role: "user" | "assistant",
+    content: string,
+  ): MessageResponse {
+    return {
+      id,
+      session_id: currentSessionId,
+      role,
+      content,
+      route: "",
+      retrieval_quality: "",
+      rewritten_question: "",
+      source_count: 0,
+      sources: [],
+      steps: [],
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  function updateTempAssistantMessage(tempId: number, content: string) {
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === tempId
+          ? {
+              ...item,
+              content,
+            }
+          : item,
+      ),
+    );
+  }
+
+  async function bootstrap() {
+    setBootLoading(true);
+    setError("");
+
+    try {
+      const auth = getStoredAuth();
+      if (!auth) {
+        router.replace("/login");
+        return;
+      }
+
+      const user = await fetchCurrentUser();
+      setCurrentUser(user);
+
+      const [knowledgeBaseList, loadedSessions] = await Promise.all([
+        fetchKnowledgeBases(),
+        fetchSessions(),
+      ]);
+
+      setKnowledgeBases(knowledgeBaseList);
+      setSelectedKnowledgeBaseIds([]);
+
+      if (loadedSessions.length > 0) {
+        setSessions(loadedSessions);
+        await selectSession(loadedSessions[0].id, loadedSessions);
+      } else {
+        const created = await createSession();
+        setSessions([created]);
+        await selectSession(created.id, [created]);
+      }
+    } catch (bootstrapError) {
+      handleAuthAwareError(bootstrapError, "初始化聊天页失败，请检查后端服务。");
+    } finally {
+      setBootLoading(false);
+    }
+  }
+
+  function handleAuthAwareError(errorValue: unknown, fallbackMessage: string) {
+    if (errorValue instanceof AuthError) {
+      clearStoredAuth();
+      router.replace("/login");
+      return;
+    }
+
+    setError(errorValue instanceof Error ? errorValue.message : fallbackMessage);
+  }
+
+  async function fetchKnowledgeBases() {
+    const response = await authFetch(`${apiBaseUrl}/knowledge-bases`);
+    const payload = (await response.json()) as KnowledgeBaseResponse[] | { detail?: string };
+
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取知识库列表失败。",
+      );
+    }
+
+    return payload as KnowledgeBaseResponse[];
+  }
+
+  async function fetchSessions() {
+    const response = await authFetch(`${apiBaseUrl}/sessions`);
+    const payload = (await response.json()) as SessionListResponse | { detail?: string };
+
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取会话列表失败。",
+      );
+    }
+
+    return (payload as SessionListResponse).sessions;
+  }
+
+  async function createSession() {
+    const response = await authFetch(`${apiBaseUrl}/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "" }),
+    });
+    const payload = (await response.json()) as SessionResponse | { detail?: string };
+
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "创建会话失败。",
+      );
+    }
+
+    return payload as SessionResponse;
+  }
+
+  async function fetchSessionMessages(sessionId: string) {
+    const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}/messages`);
+    const payload = (await response.json()) as SessionMessagesResponse | { detail?: string };
+
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取会话消息失败。",
+      );
+    }
+
+    return payload as SessionMessagesResponse;
+  }
+
+  async function selectSession(
+    sessionId: string,
+    currentSessions: SessionResponse[] = sessions,
+  ) {
+    setSessionLoading(true);
+    setError("");
+
+    try {
+      const payload = await fetchSessionMessages(sessionId);
+      setCurrentSessionId(sessionId);
+      setMessages(payload.messages);
+      setSessions(currentSessions);
+      setRenameTitle(payload.session.title);
+      setRenaming(false);
+      setMenuSessionId("");
+
+      const chosenIds = payload.session.knowledge_base_id
+        ? [payload.session.knowledge_base_id]
+        : [];
+      setSelectedKnowledgeBaseIds(chosenIds);
+
+      const latestAssistant = [...payload.messages]
+        .reverse()
+        .find((item) => item.role === "assistant");
+
+      if (latestAssistant) {
+        setResult({
+          answer: latestAssistant.content,
+          sources: latestAssistant.sources,
+          route: latestAssistant.route,
+          steps: latestAssistant.steps,
+          retrieval_quality: latestAssistant.retrieval_quality,
+          rewritten_question: latestAssistant.rewritten_question,
+        });
+      } else {
+        setResult(null);
+      }
+    } catch (selectError) {
+      handleAuthAwareError(selectError, "切换会话失败。");
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  async function handleCreateSession() {
+    setError("");
+
+    try {
+      const created = await createSession();
+      const nextSessions = [created, ...sessions];
+      setSessions(nextSessions);
+      setCurrentSessionId(created.id);
+      setMessages([]);
+      setResult(null);
+      setQuestion("");
+      setRenameTitle(created.title);
+      setRenaming(false);
+      setMenuSessionId("");
+    } catch (createError) {
+      handleAuthAwareError(createError, "新建会话失败。");
+    }
+  }
+
+  async function handleRenameSession(sessionId: string = currentSessionId) {
+    const trimmedTitle = renameTitle.trim();
+    if (!sessionId || !trimmedTitle) {
+      setError("请输入会话标题。");
+      return;
+    }
+
+    setRenameLoading(true);
+    setError("");
+
+    try {
+      const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: trimmedTitle }),
+      });
+      const payload = (await response.json()) as SessionResponse | { detail?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "重命名会话失败。",
+        );
+      }
+
+      const updated = payload as SessionResponse;
+      setSessions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (updated.id === currentSessionId) {
+        setRenameTitle(updated.title);
+      }
+      setRenaming(false);
+      setMenuSessionId("");
+    } catch (renameError) {
+      handleAuthAwareError(renameError, "重命名会话失败。");
+    } finally {
+      setRenameLoading(false);
+    }
+  }
+
+  async function handleDeleteSession(sessionId: string = currentSessionId) {
+    if (!sessionId) {
+      return;
+    }
+
+    setDeleteLoading(true);
+    setError("");
+
+    try {
+      const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as DeleteSessionResponse | { detail?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "删除会话失败。",
+        );
+      }
+
+      const nextSessions = sessions.filter((item) => item.id !== sessionId);
+      setSessions(nextSessions);
+      setMenuSessionId("");
+
+      if (sessionId === currentSessionId) {
+        if (nextSessions.length > 0) {
+          await selectSession(nextSessions[0].id, nextSessions);
+        } else {
+          const created = await createSession();
+          setSessions([created]);
+          await selectSession(created.id, [created]);
+        }
+      }
+    } catch (deleteError) {
+      handleAuthAwareError(deleteError, "删除会话失败。");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) {
+      setError("请输入问题后再发送。");
+      return;
+    }
+
+    if (!currentSessionId) {
+      setError("当前没有可用会话，请先新建会话。");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const auth = getStoredAuth();
+      if (!auth?.token) {
+        throw new AuthError("登录状态已失效，请重新登录。");
+      }
+
+      const tempUserId = Date.now();
+      const tempAssistantId = tempUserId + 1;
+      const userMessage = buildTempMessage(tempUserId, "user", trimmedQuestion);
+      const assistantMessage = buildTempMessage(tempAssistantId, "assistant", "");
+
+      setMessages((current) => [...current, userMessage, assistantMessage]);
+      setResult({
+        answer: "",
+        sources: [],
+        route: "",
+        steps: [],
+        retrieval_quality: "",
+        rewritten_question: "",
+      });
+      setQuestion("");
+
+      const response = await fetch(
+        `${apiBaseUrl}/sessions/${currentSessionId}/chat/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({
+            question: trimmedQuestion,
+            top_k: topK,
+            knowledge_base_ids: selectedKnowledgeBaseIds,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { detail?: string };
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "请求失败，请检查后端服务。",
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("流式响应为空。");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let answerBuffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) {
+            continue;
+          }
+
+          const eventPayload = JSON.parse(line) as StreamEvent;
+
+          if (eventPayload.type === "step") {
+            const step = String(eventPayload.data.step ?? "");
+            const route = String(eventPayload.data.route ?? "");
+            const retrievalQuality = String(eventPayload.data.retrieval_quality ?? "");
+
+            setResult((current) => {
+              const base = current ?? {
+                answer: answerBuffer,
+                sources: [],
+                route: "",
+                steps: [],
+                retrieval_quality: "",
+                rewritten_question: "",
+              };
+
+              return {
+                ...base,
+                answer: answerBuffer,
+                route: route || base.route,
+                retrieval_quality: retrievalQuality || base.retrieval_quality,
+                steps:
+                  step && !base.steps.includes(step)
+                    ? [...base.steps, step]
+                    : base.steps,
+              };
+            });
+            continue;
+          }
+
+          if (eventPayload.type === "sources") {
+            const nextSources = Array.isArray(eventPayload.data.sources)
+              ? (eventPayload.data.sources as ChatResponse["sources"])
+              : [];
+
+            setResult((current) => {
+              const base = current ?? {
+                answer: answerBuffer,
+                sources: [],
+                route: "",
+                steps: [],
+                retrieval_quality: "",
+                rewritten_question: "",
+              };
+
+              return {
+                ...base,
+                answer: answerBuffer,
+                sources: nextSources,
+              };
+            });
+            continue;
+          }
+
+          if (eventPayload.type === "meta") {
+            const rewrittenQuestion = String(
+              eventPayload.data.rewritten_question ?? "",
+            );
+
+            setResult((current) => {
+              const base = current ?? {
+                answer: answerBuffer,
+                sources: [],
+                route: "",
+                steps: [],
+                retrieval_quality: "",
+                rewritten_question: "",
+              };
+
+              return {
+                ...base,
+                answer: answerBuffer,
+                rewritten_question:
+                  rewrittenQuestion || base.rewritten_question,
+              };
+            });
+            continue;
+          }
+
+          if (eventPayload.type === "token") {
+            const content = String(eventPayload.data.content ?? "");
+            if (!content) {
+              continue;
+            }
+
+            answerBuffer += content;
+            updateTempAssistantMessage(tempAssistantId, answerBuffer);
+            setResult((current) => {
+              const base = current ?? {
+                answer: "",
+                sources: [],
+                route: "",
+                steps: [],
+                retrieval_quality: "",
+                rewritten_question: "",
+              };
+
+              return {
+                ...base,
+                answer: answerBuffer,
+              };
+            });
+            continue;
+          }
+
+          if (eventPayload.type === "final") {
+            const finalPayload = eventPayload.data as unknown as ChatResponse;
+            answerBuffer = finalPayload.answer;
+            updateTempAssistantMessage(tempAssistantId, finalPayload.answer);
+            setResult(finalPayload);
+            continue;
+          }
+
+          if (eventPayload.type === "error") {
+            throw new Error(String(eventPayload.data.message ?? "流式回答失败。"));
+          }
+        }
+      }
+
+      const trailingLine = buffer.trim();
+      if (trailingLine) {
+        const eventPayload = JSON.parse(trailingLine) as StreamEvent;
+        if (eventPayload.type === "final") {
+          const finalPayload = eventPayload.data as unknown as ChatResponse;
+          answerBuffer = finalPayload.answer;
+          updateTempAssistantMessage(tempAssistantId, finalPayload.answer);
+          setResult(finalPayload);
+        }
+      }
+
+      const updatedSessions = await fetchSessions();
+      setSessions(updatedSessions);
+
+      const updatedMessages = await fetchSessionMessages(currentSessionId);
+      setMessages(updatedMessages.messages);
+    } catch (submitError) {
+      handleAuthAwareError(submitError, "请求失败，请稍后重试。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    clearStoredAuth();
+    router.replace("/login");
+  }
+
+  function toggleKnowledgeBaseSelection(knowledgeBaseId: string) {
+    setSelectedKnowledgeBaseIds((current) =>
+      current.includes(knowledgeBaseId)
+        ? current.filter((item) => item !== knowledgeBaseId)
+        : [...current, knowledgeBaseId],
+    );
+  }
+
+  async function openRenameForSession(session: SessionResponse) {
+    if (session.id !== currentSessionId) {
+      await selectSession(session.id);
+    }
+    setRenameTitle(session.title);
+    setRenaming(true);
+    setMenuSessionId("");
+  }
+
+  async function openDeleteForSession(session: SessionResponse) {
+    if (session.id !== currentSessionId) {
+      await selectSession(session.id);
+    }
+    await handleDeleteSession(session.id);
+  }
+
+  return (
+    <main className={styles.page}>
+      <section
+        className={
+          inspectorOpen
+            ? styles.layout
+            : `${styles.layout} ${styles.layoutWithoutInspector}`
+        }
+      >
+        <aside className={styles.sidebar}>
+          <div className={styles.sidebarBrand}>
+            <div className={styles.brandIcon}>KB</div>
+            <div>
+              <h1 className={styles.brandTitle}>myAgent</h1>
+              <p className={styles.brandSubtitle}>Knowledge Agent</p>
+            </div>
+          </div>
+
+          <div className={styles.quickCard}>
+            <div className={styles.quickCardHeader}>
+              <span>快速开始</span>
+              <button
+                className={styles.miniPrimaryButton}
+                onClick={() => void handleCreateSession()}
+                type="button"
+              >
+                新内容
+              </button>
+            </div>
+
+            <button
+              className={styles.newSessionCard}
+              onClick={() => void handleCreateSession()}
+              type="button"
+            >
+              <span className={styles.newSessionIcon}>+</span>
+              <span>
+                <strong>新建对话</strong>
+                <small>从空白开始</small>
+              </span>
+            </button>
+
+            {currentUser?.role === "admin" ? (
+              <Link className={styles.adminEntry} href="/admin">
+                管理后台
+              </Link>
+            ) : null}
+          </div>
+
+          <div className={styles.searchCard}>
+            <label className={styles.searchLabel} htmlFor="session-search">
+              搜索对话
+            </label>
+            <input
+              id="session-search"
+              className={styles.searchInput}
+              onChange={(event) => setSessionKeyword(event.target.value)}
+              placeholder="搜索标题或知识库..."
+              value={sessionKeyword}
+            />
+          </div>
+
+          <div className={styles.sessionList}>
+            {filteredSessions.length > 0 ? (
+              filteredSessions.map((session) => {
+                const active = session.id === currentSessionId;
+                const menuOpen = menuSessionId === session.id;
+
+                return (
+                  <div
+                    className={active ? styles.sessionRowActive : styles.sessionRow}
+                    key={session.id}
+                  >
+                    <button
+                      className={active ? styles.sessionMainActive : styles.sessionMain}
+                      onClick={() => void selectSession(session.id)}
+                      type="button"
+                    >
+                      <span className={styles.sessionItemTitle}>{session.title}</span>
+                      <span className={styles.sessionItemMeta}>
+                        {session.message_count} 条消息
+                      </span>
+                    </button>
+
+                    <div className={styles.sessionActions}>
+                      <button
+                        aria-label="会话操作"
+                        className={
+                          menuOpen
+                            ? styles.sessionMenuButtonActive
+                            : styles.sessionMenuButton
+                        }
+                        onClick={() =>
+                          setMenuSessionId((current) =>
+                            current === session.id ? "" : session.id,
+                          )
+                        }
+                        type="button"
+                      >
+                        ...
+                      </button>
+
+                      {menuOpen ? (
+                        <div className={styles.sessionMenu}>
+                          <button
+                            className={styles.sessionMenuItem}
+                            onClick={() => void openRenameForSession(session)}
+                            type="button"
+                          >
+                            重命名
+                          </button>
+                          <button
+                            className={styles.sessionMenuItemDanger}
+                            disabled={deleteLoading}
+                            onClick={() => void openDeleteForSession(session)}
+                            type="button"
+                          >
+                            {deleteLoading && currentSessionId === session.id
+                              ? "删除中..."
+                              : "删除"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <EmptyState text="没有匹配的会话。" />
+            )}
+          </div>
+
+          <div className={styles.sidebarFooter}>
+            <div className={styles.userCard}>
+              <div>
+                <strong>{currentUser?.username || "当前用户"}</strong>
+                <small>{currentUser?.role === "admin" ? "管理员" : "普通用户"}</small>
+              </div>
+              <button className={styles.logoutButton} onClick={handleLogout} type="button">
+                退出
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <section className={styles.chatColumn}>
+          <header className={styles.chatTopbar}>
+            <div>
+              <h2 className={styles.chatSessionTitle}>
+                {currentSession?.title || "新会话"}
+              </h2>
+              <p className={styles.chatSessionSubtitle}>
+                左侧管理历史对话，中间专注聊天，右侧查看检索细节。
+              </p>
+            </div>
+
+            <div className={styles.chatTopbarActions}>
+              <button
+                aria-label={inspectorOpen ? "收起详细信息" : "展开详细信息"}
+                className={styles.panelToggleButton}
+                onClick={() => setInspectorOpen((current) => !current)}
+                title={inspectorOpen ? "收起详细信息" : "展开详细信息"}
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className={
+                    inspectorOpen ? styles.panelToggleIconOpen : styles.panelToggleIconClosed
+                  }
+                />
+              </button>
+            </div>
+          </header>
+
+          {renaming ? (
+            <div className={styles.renameBar}>
+              <input
+                className={styles.renameInput}
+                onChange={(event) => setRenameTitle(event.target.value)}
+                placeholder="输入新的会话标题"
+                value={renameTitle}
+              />
+              <button
+                className={styles.primaryAction}
+                disabled={renameLoading}
+                onClick={() => void handleRenameSession()}
+                type="button"
+              >
+                {renameLoading ? "保存中..." : "保存"}
+              </button>
+              <button
+                className={styles.topbarButton}
+                onClick={() => {
+                  setRenaming(false);
+                  setRenameTitle(currentSession?.title ?? "");
+                }}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          ) : null}
+
+          <div className={styles.chatCanvas}>
+            {bootLoading || sessionLoading ? (
+              <div className={styles.emptyHero}>
+                <EmptyState text="正在加载会话内容..." />
+              </div>
+            ) : messages.length > 0 ? (
+              <div className={styles.messageList}>
+                {messages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={
+                      message.role === "user"
+                        ? styles.userMessage
+                        : styles.assistantMessage
+                    }
+                  >
+                    <div className={styles.messageRole}>
+                      {message.role === "user" ? "你" : "Agent"}
+                    </div>
+                    <p className={styles.messageText}>{message.content}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.emptyHero}>
+                <div className={styles.heroBadge}>RAG 智能问答</div>
+                <h3 className={styles.heroTitle}>把问题变成清晰答案</h3>
+                <p className={styles.heroCopy}>
+                  结构化提问、知识检索与深度思考，一次对话给出可执行结果。
+                </p>
+                <div className={styles.heroQuickGrid}>
+                  {starterQuestions.map((item) => (
+                    <button
+                      key={item}
+                      className={styles.heroQuickCard}
+                      onClick={() => setQuestion(item)}
+                      type="button"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className={styles.composerShell}>
+            <div className={styles.composerToolbar}>
+              <div className={styles.kbSelectorWrap}>
+                <button
+                  aria-expanded={knowledgeBasePickerOpen}
+                  className={styles.kbSelectorButton}
+                  onClick={() => setKnowledgeBasePickerOpen((current) => !current)}
+                  type="button"
+                >
+                  <span className={styles.kbSelectorLabel}>{"\u77E5\u8BC6\u5E93"}</span>
+                  <span className={styles.kbSelectorValue}>{selectedKnowledgeBaseSummary}</span>
+                </button>
+
+                {knowledgeBasePickerOpen ? (
+                  <div className={styles.kbSelectorPopover}>
+                    <div className={styles.kbPopoverHeader}>
+                      <div className={styles.filterHead}>
+                        <span className={styles.filterLabel}>{"\u77E5\u8BC6\u5E93\u8303\u56F4"}</span>
+                        <span className={styles.filterSummary}>
+                          {selectedKnowledgeBaseSummary}
+                        </span>
+                      </div>
+
+                      <div className={styles.filterActions}>
+                        <button
+                          className={styles.smallGhostButton}
+                          onClick={() => setSelectedKnowledgeBaseIds([])}
+                          type="button"
+                        >
+                          {"\u5168\u90E8"}
+                        </button>
+                        <button
+                          className={styles.smallGhostButton}
+                          onClick={() =>
+                            setSelectedKnowledgeBaseIds(
+                              knowledgeBases.map((item) => item.id),
+                            )
+                          }
+                          type="button"
+                        >
+                          {"\u5168\u9009"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={styles.kbPills}>
+                      {knowledgeBases.map((item) => {
+                        const checked = selectedKnowledgeBaseIds.includes(item.id);
+                        return (
+                          <label
+                            className={checked ? styles.kbPillActive : styles.kbPill}
+                            key={item.id}
+                          >
+                            <input
+                              checked={checked}
+                              onChange={() => toggleKnowledgeBaseSelection(item.id)}
+                              type="checkbox"
+                            />
+                            <span>{item.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <form className={styles.composerForm} onSubmit={handleSubmit}>
+              <textarea
+                className={styles.composerInput}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="输入你的问题..."
+                rows={2}
+                value={question}
+              />
+
+              <div className={styles.composerFooter}>
+                <div className={styles.composerMeta}>
+                  <label className={styles.topkLabel} htmlFor="top-k">
+                    检索片段数
+                  </label>
+                  <input
+                    id="top-k"
+                    className={styles.range}
+                    max={8}
+                    min={1}
+                    onChange={(event) => setTopK(Number(event.target.value))}
+                    type="range"
+                    value={topK}
+                  />
+                  <span className={styles.topkValue}>{topK}</span>
+                </div>
+
+                <button
+                  className={styles.sendButton}
+                  disabled={loading || bootLoading || sessionLoading}
+                  type="submit"
+                >
+                  {loading ? "发送中..." : "发送"}
+                </button>
+              </div>
+            </form>
+
+            {error ? <p className={styles.error}>{error}</p> : null}
+          </div>
+        </section>
+
+        {inspectorOpen ? (
+          <aside className={styles.detailColumn}>
+            <div className={styles.detailHeader}>
+              <div>
+                <h3 className={styles.detailTitle}>详细信息</h3>
+                <p className={styles.detailSubtitle}>执行链路、改写结果与检索来源</p>
+              </div>
+            </div>
+
+            <div className={styles.statusRow}>
+              <StatusBadge label="Route" value={result?.route || "-"} />
+              <StatusBadge label="Retrieval" value={result?.retrieval_quality || "-"} />
+              <StatusBadge label="Sources" value={String(result?.sources.length ?? 0)} />
+            </div>
+
+            <section className={styles.detailCard}>
+              <h4 className={styles.detailCardTitle}>执行步骤</h4>
+              {result?.steps.length ? (
+                <ol className={styles.stepsList}>
+                  {result.steps.map((step) => (
+                    <li className={styles.stepItem} key={step}>
+                      <span className={styles.stepDot} />
+                      <code>{step}</code>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyState text="还没有执行路径。" />
+              )}
+            </section>
+
+            <section className={styles.detailCard}>
+              <h4 className={styles.detailCardTitle}>改写问题</h4>
+              {result?.rewritten_question ? (
+                <p className={styles.rewrittenQuestion}>{result.rewritten_question}</p>
+              ) : (
+                <EmptyState text="本次没有触发问题改写。" />
+              )}
+            </section>
+
+            <section className={styles.detailCard}>
+              <h4 className={styles.detailCardTitle}>检索来源</h4>
+              {result?.sources.length ? (
+                <div className={styles.sources}>
+                  {result.sources.map((source, index) => (
+                    <article className={styles.sourceCard} key={`${source.source}-${index}`}>
+                      <div className={styles.sourceMeta}>
+                        <span className={styles.sourcePath}>{source.source || "未知来源"}</span>
+                        <span className={styles.sourceScore}>
+                          {typeof source.score === "number"
+                            ? source.score.toFixed(3)
+                            : "n/a"}
+                        </span>
+                      </div>
+                      <p className={styles.sourceContent}>{source.content}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState text="本次没有返回知识库检索片段。" />
+              )}
+            </section>
+          </aside>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
+function StatusBadge({ label, value }: { label: string; value: string }) {
+  return (
+    <span className={styles.badge}>
+      <span className={styles.badgeLabel}>{label}</span>
+      <span className={styles.badgeValue}>{value}</span>
+    </span>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className={styles.emptyState}>{text}</p>;
+}

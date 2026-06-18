@@ -1,0 +1,42 @@
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., description="User question")
+    top_k: int = Field(default=4, ge=1, le=20, description="Retrieved chunk count")
+    knowledge_base_id: str | None = Field(default=None, description="Knowledge base id")
+    knowledge_base_ids: list[str] | None = Field(
+        default=None,
+        description="Knowledge base ids; empty means search all knowledge bases",
+    )
+
+
+class SourceChunk(BaseModel):
+    content: str
+    source: Optional[str] = None
+    score: Optional[float] = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[SourceChunk]
+    route: str = ""
+    steps: List[str] = []
+    retrieval_quality: str = ""
+    rewritten_question: str = ""
+
+
+class MessageResponse(BaseModel):
+    id: int
+    session_id: str
+    role: Literal["user", "assistant"]
+    content: str
+    route: str = ""
+    retrieval_quality: str = ""
+    rewritten_question: str = ""
+    source_count: int = 0
+    sources: List[SourceChunk] = []
+    steps: List[str] = []
+    created_at: str

@@ -1,0 +1,517 @@
+from collections import Counter
+from io import BytesIO
+from datetime import datetime
+from pathlib import Path
+import re
+from typing import Iterable, List
+from xml.etree import ElementTree
+from zipfile import ZipFile
+
+from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
+from pymilvus import DataType, MilvusClient
+
+from app.core.config import settings
+from app.schemas import DocumentInfo, SourceChunk
+from app.services.observability import (
+    extract_usage_details,
+    start_generation,
+    update_generation,
+)
+from app.services.storage_service import (
+    StoredFileMetadata,
+    detect_file_type,
+    extract_filename,
+    is_object_storage_source,
+    normalize_source,
+    read_file_bytes,
+    resolve_document_path,
+)
+
+
+VALID_COLLECTION_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def is_valid_collection_name(collection_name: str) -> bool:
+    return bool(collection_name) and VALID_COLLECTION_NAME_RE.fullmatch(collection_name) is not None
+
+
+def get_embeddings() -> OpenAIEmbeddings:
+    return OpenAIEmbeddings(
+        model=settings.embedding_model,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        check_embedding_ctx_length=False,
+        chunk_size=10,
+    )
+
+
+def get_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=settings.chat_model,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        temperature=0,
+    )
+
+
+def get_milvus_client() -> MilvusClient:
+    return MilvusClient(uri=settings.milvus_uri)
+
+
+def ensure_vector_index(client: MilvusClient, collection_name: str) -> None:
+    indexes = client.list_indexes(
+        collection_name=collection_name,
+        field_name="vector",
+    )
+    if indexes:
+        return
+
+    index_params = MilvusClient.prepare_index_params()
+    index_params.add_index(
+        field_name="vector",
+        index_type="AUTOINDEX",
+        metric_type="COSINE",
+    )
+    client.create_index(
+        collection_name=collection_name,
+        index_params=index_params,
+    )
+
+
+def ensure_collection(
+    client: MilvusClient,
+    collection_name: str,
+    vector_dimension: int,
+) -> None:
+    if not is_valid_collection_name(collection_name):
+        raise ValueError(f"Invalid Milvus collection name: {collection_name}")
+
+    if client.has_collection(collection_name):
+        ensure_vector_index(client, collection_name)
+        client.load_collection(collection_name)
+        return
+
+    schema = MilvusClient.create_schema(auto_id=True, enable_dynamic_field=False)
+    schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
+    schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=vector_dimension)
+    schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
+    schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=1024)
+
+    index_params = MilvusClient.prepare_index_params()
+    index_params.add_index(
+        field_name="vector",
+        index_type="AUTOINDEX",
+        metric_type="COSINE",
+    )
+
+    client.create_collection(
+        collection_name=collection_name,
+        schema=schema,
+        index_params=index_params,
+    )
+    client.load_collection(collection_name)
+
+
+def ensure_existing_collection_loaded(client: MilvusClient, collection_name: str) -> bool:
+    if not is_valid_collection_name(collection_name):
+        return False
+    if not client.has_collection(collection_name):
+        return False
+    ensure_vector_index(client, collection_name)
+    client.load_collection(collection_name)
+    return True
+
+
+def escape_milvus_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def source_variants(source: str) -> set[str]:
+    normalized = normalize_source(source)
+    return {
+        source,
+        normalized,
+        source.replace("\\", "/"),
+        source.replace("/", "\\"),
+    }
+
+
+def get_existing_texts_by_sources(
+    client: MilvusClient,
+    collection_name: str,
+    sources: Iterable[str],
+) -> set[str]:
+    existing_texts: set[str] = set()
+    for source in sources:
+        escaped_source = escape_milvus_string(source)
+        rows = client.query(
+            collection_name=collection_name,
+            filter=f'source == "{escaped_source}"',
+            output_fields=["text"],
+            limit=10000,
+        )
+        existing_texts.update(row["text"] for row in rows)
+    return existing_texts
+
+
+def get_document_uploaded_at(source: str) -> str:
+    try:
+        metadata = get_source_metadata(source)
+    except Exception:
+        return ""
+    return metadata.uploaded_at
+
+
+def get_document_character_count(source: str) -> tuple[int, str]:
+    try:
+        text = extract_text_from_source(source).strip()
+    except FileNotFoundError:
+        return 0, "missing"
+    except Exception:
+        return 0, "parse_error"
+
+    if not text:
+        return 0, "empty"
+
+    return len(text), "indexed"
+
+
+def list_documents(collection_name: str) -> list[DocumentInfo]:
+    client = get_milvus_client()
+    if not ensure_existing_collection_loaded(client, collection_name):
+        return []
+
+    rows = client.query(
+        collection_name=collection_name,
+        filter="",
+        output_fields=["source"],
+        limit=10000,
+    )
+    source_counts = Counter(row["source"] for row in rows if row.get("source"))
+    documents: list[DocumentInfo] = []
+    for source, chunks in sorted(source_counts.items()):
+        character_count, status = get_document_character_count(source)
+        try:
+            metadata = get_source_metadata(source)
+        except Exception:
+            metadata = StoredFileMetadata(
+                source=source,
+                provider="s3" if is_object_storage_source(source) else "local",
+                bucket=None,
+                object_key=None,
+                content_type=None,
+                file_size=0,
+                uploaded_at="",
+            )
+        documents.append(
+            DocumentInfo(
+                filename=extract_filename(source),
+                file_type=detect_file_type(source),
+                source=source,
+                chunks=chunks,
+                status=status,
+                character_count=character_count,
+                uploaded_at=metadata.uploaded_at,
+                storage_provider=metadata.provider,
+                storage_bucket=metadata.bucket,
+                storage_object_key=metadata.object_key,
+                content_type=metadata.content_type,
+                file_size=metadata.file_size,
+            )
+        )
+    return documents
+
+
+def collection_has_documents(collection_name: str) -> bool:
+    if not is_valid_collection_name(collection_name):
+        return False
+    client = get_milvus_client()
+    if not ensure_existing_collection_loaded(client, collection_name):
+        return False
+
+    rows = client.query(
+        collection_name=collection_name,
+        filter="",
+        output_fields=["source"],
+        limit=1,
+    )
+    return len(rows) > 0
+
+
+def drop_collection_if_exists(collection_name: str) -> None:
+    if not is_valid_collection_name(collection_name):
+        return
+    client = get_milvus_client()
+    if client.has_collection(collection_name):
+        client.drop_collection(collection_name)
+
+
+def delete_document(collection_name: str, source: str) -> int:
+    client = get_milvus_client()
+    if not ensure_existing_collection_loaded(client, collection_name):
+        return 0
+
+    deleted = 0
+    for item in source_variants(source):
+        escaped_source = escape_milvus_string(item)
+        result = client.delete(
+            collection_name=collection_name,
+            filter=f'source == "{escaped_source}"',
+        )
+        deleted += result.get("delete_count", 0)
+
+    if deleted > 0:
+        client.flush(collection_name)
+        client.load_collection(collection_name)
+
+    return deleted
+
+
+def extract_text_from_txt_or_md(content: bytes) -> str:
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("TXT or Markdown files must be UTF-8 encoded.") from exc
+
+
+def extract_text_from_pdf(content: bytes) -> str:
+    reader = PdfReader(BytesIO(content))
+    parts: list[str] = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        text = text.strip()
+        if text:
+            parts.append(text)
+    return "\n\n".join(parts)
+
+
+def extract_text_from_docx(content: bytes) -> str:
+    with ZipFile(BytesIO(content)) as archive:
+        try:
+            xml_bytes = archive.read("word/document.xml")
+        except KeyError as exc:
+            raise ValueError("DOCX file is missing word/document.xml.") from exc
+
+    root = ElementTree.fromstring(xml_bytes)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+
+    for paragraph in root.findall(".//w:p", namespace):
+        runs = []
+        for text_node in paragraph.findall(".//w:t", namespace):
+            if text_node.text:
+                runs.append(text_node.text)
+        line = "".join(runs).strip()
+        if line:
+            paragraphs.append(line)
+
+    return "\n\n".join(paragraphs)
+
+
+def extract_text_from_bytes(content: bytes, source: str) -> str:
+    suffix = Path(source).suffix.lower()
+    if suffix in {".txt", ".md"}:
+        return extract_text_from_txt_or_md(content)
+    if suffix == ".pdf":
+        return extract_text_from_pdf(content)
+    if suffix == ".docx":
+        return extract_text_from_docx(content)
+    raise ValueError(f"Unsupported file type: {suffix}")
+
+
+def extract_text_from_source(source: str) -> str:
+    content = read_file_bytes(source)
+    return extract_text_from_bytes(content, source)
+
+
+def get_source_metadata(source: str) -> StoredFileMetadata:
+    from app.services.storage_service import get_stored_file_metadata
+
+    return get_stored_file_metadata(source)
+
+
+def load_document_file(path: str) -> List[Document]:
+    text = extract_text_from_source(path).strip()
+    if not text:
+        raise ValueError("Document content is empty after parsing.")
+
+    source = normalize_source(path)
+    return [
+        Document(
+            page_content=text,
+            metadata={
+                "source": source,
+                "source_variants": source_variants(path),
+            },
+        )
+    ]
+
+
+def ingest_document(collection_name: str, path: str) -> tuple[int, int]:
+    documents = load_document_file(path)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=120)
+    chunks = splitter.split_documents(documents)
+    if not chunks:
+        return 0, 0
+
+    embeddings = get_embeddings()
+    first_vector = embeddings.embed_query(chunks[0].page_content)
+
+    client = get_milvus_client()
+    ensure_collection(client, collection_name, vector_dimension=len(first_vector))
+
+    variants = chunks[0].metadata.get("source_variants", set())
+    existing_texts = get_existing_texts_by_sources(client, collection_name, variants)
+
+    new_chunks: list[Document] = []
+    seen_texts = set(existing_texts)
+    for chunk in chunks:
+        if chunk.page_content in seen_texts:
+            continue
+        new_chunks.append(chunk)
+        seen_texts.add(chunk.page_content)
+
+    skipped = len(chunks) - len(new_chunks)
+    if not new_chunks:
+        return 0, skipped
+
+    texts = [chunk.page_content for chunk in new_chunks]
+    vectors = embeddings.embed_documents(texts)
+    rows = [
+        {
+            "vector": vector,
+            "text": chunk.page_content,
+            "source": chunk.metadata.get("source", ""),
+        }
+        for chunk, vector in zip(new_chunks, vectors)
+    ]
+    client.insert(collection_name=collection_name, data=rows)
+    client.flush(collection_name)
+    client.load_collection(collection_name)
+    return len(new_chunks), skipped
+
+
+def retrieve_sources(
+    collection_name: str,
+    question: str,
+    top_k: int = 4,
+) -> List[SourceChunk]:
+    query_vector = get_embeddings().embed_query(question)
+    client = get_milvus_client()
+    ensure_collection(client, collection_name, vector_dimension=len(query_vector))
+
+    search_results = client.search(
+        collection_name=collection_name,
+        data=[query_vector],
+        limit=top_k,
+        output_fields=["text", "source"],
+        search_params={"metric_type": "COSINE"},
+    )
+    hits = search_results[0] if search_results else []
+    return [
+        SourceChunk(
+            content=hit["entity"]["text"],
+            source=hit["entity"].get("source"),
+            score=hit.get("distance", hit.get("score")),
+        )
+        for hit in hits
+    ]
+
+
+def retrieve_sources_multi(
+    collection_names: list[str],
+    question: str,
+    top_k: int = 4,
+) -> List[SourceChunk]:
+    normalized_collection_names: list[str] = []
+    seen_collection_names: set[str] = set()
+    for collection_name in collection_names:
+        if not collection_name or collection_name in seen_collection_names:
+            continue
+        normalized_collection_names.append(collection_name)
+        seen_collection_names.add(collection_name)
+
+    if not normalized_collection_names:
+        return []
+
+    merged_sources: list[SourceChunk] = []
+    for collection_name in normalized_collection_names:
+        merged_sources.extend(
+            retrieve_sources(
+                collection_name=collection_name,
+                question=question,
+                top_k=top_k,
+            )
+        )
+
+    deduplicated_sources: list[SourceChunk] = []
+    seen_chunks: set[tuple[str, str]] = set()
+    for source in merged_sources:
+        key = (source.source or "", source.content)
+        if key in seen_chunks:
+            continue
+        deduplicated_sources.append(source)
+        seen_chunks.add(key)
+
+    deduplicated_sources.sort(key=lambda item: item.score or 0.0, reverse=True)
+    return deduplicated_sources[:top_k]
+
+
+def build_context(sources: List[SourceChunk]) -> str:
+    return "\n\n".join(
+        f"片段 {index + 1}:\n{source.content}"
+        for index, source in enumerate(sources)
+    )
+
+
+def generate_answer_with_context(question: str, sources: List[SourceChunk]) -> str:
+    context = build_context(sources)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是一个严谨的知识库问答助手。请只根据给定资料回答问题。"
+                "如果资料中没有答案，请直接说资料中没有提到。",
+            ),
+            ("human", "资料:\n{context}\n\n问题: {question}"),
+        ]
+    )
+
+    llm = get_llm()
+    chain = prompt | llm
+
+    generation_input = {
+        "question": question,
+        "context": context,
+        "source_count": len(sources),
+    }
+    with start_generation(
+        "qwen_rag_answer_call",
+        input_data=generation_input,
+        model=settings.chat_model,
+        model_parameters={"temperature": 0},
+        metadata={"node": "generate_rag_answer"},
+    ) as generation:
+        response = chain.invoke({"context": context, "question": question})
+        update_generation(
+            generation,
+            output=response.content,
+            usage_details=extract_usage_details(response),
+        )
+
+    return response.content
+
+
+def chat_with_rag(
+    collection_name: str,
+    question: str,
+    top_k: int = 4,
+) -> tuple[str, List[SourceChunk]]:
+    sources = retrieve_sources(collection_name=collection_name, question=question, top_k=top_k)
+    answer = generate_answer_with_context(question, sources)
+    return answer, sources

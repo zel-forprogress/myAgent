@@ -1,0 +1,4 @@
+本项目是一个企业知识库 Agent 系统。
+技术栈包括 Python、FastAPI、LangChain、Milvus、DashScope 和 Qwen。
+第一阶段目标是跑通后端 RAG 闭环。
+RAG 流程包括文档读取、文本切分、向量化、向量检索和大模型回答。

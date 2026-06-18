@@ -1,0 +1,35 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.logs/
+
+# Runtime data
+*.db
+*.sqlite
+*.sqlite3
+rag-backend/data/docs/uploads/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
