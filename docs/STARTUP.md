@@ -19,7 +19,61 @@
 - MinIO
 - Milvus
 
-## 2. 配置后端环境变量
+## 2. 一键启动完整系统
+
+如果你只是想把整个项目跑起来，推荐使用根目录的 `docker-compose.yml`。这个方式会同时启动：
+
+- PostgreSQL
+- etcd
+- MinIO
+- Milvus
+- FastAPI 后端
+- Next.js 前端
+
+先进入项目根目录：
+
+```powershell
+cd D:\code\git_localRepository\myAgent
+copy .env.example .env
+```
+
+打开根目录 `.env`，至少填写你的 DashScope / Qwen API Key：
+
+```env
+OPENAI_API_KEY=your_dashscope_api_key
+```
+
+然后执行：
+
+```powershell
+docker compose up -d --build
+```
+
+查看容器状态：
+
+```powershell
+docker compose ps
+```
+
+常用访问地址：
+
+- 前端页面：`http://localhost:3000`
+- 后端 Swagger：`http://127.0.0.1:8000/docs`
+- MinIO 控制台：`http://127.0.0.1:9001`
+
+停止完整系统：
+
+```powershell
+docker compose down
+```
+
+如果你修改了前端或后端依赖、Dockerfile、构建配置，可以重新构建：
+
+```powershell
+docker compose up -d --build backend frontend
+```
+
+## 3. 开发模式：配置后端环境变量
 
 进入后端目录并创建 `.env`：
 
@@ -44,7 +98,7 @@ EMBEDDING_MODEL=text-embedding-v4
 
 如果你使用其他 Qwen 聊天模型，只需要修改 `CHAT_MODEL`。
 
-## 3. 启动 Docker 依赖服务
+## 4. 开发模式：启动 Docker 依赖服务
 
 在后端目录执行：
 
@@ -73,7 +127,7 @@ username: minioadmin
 password: minioadmin
 ```
 
-## 4. 安装后端依赖
+## 5. 开发模式：安装后端依赖
 
 创建并激活 Python 虚拟环境：
 
@@ -89,7 +143,7 @@ cd D:\code\git_localRepository\myAgent\rag-backend
 pip install -r requirements.txt
 ```
 
-## 5. 启动后端
+## 6. 开发模式：启动后端
 
 在 `rag-backend` 目录启动 FastAPI：
 
@@ -118,7 +172,7 @@ GET http://127.0.0.1:8000/health
 }
 ```
 
-## 6. 配置前端环境变量
+## 7. 开发模式：配置前端环境变量
 
 进入前端目录并创建 `.env.local`：
 
@@ -133,7 +187,7 @@ copy .env.local.example .env.local
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-## 7. 安装并启动前端
+## 8. 开发模式：安装并启动前端
 
 安装前端依赖：
 
@@ -156,7 +210,7 @@ http://localhost:3000
 
 如果 `3000` 端口已经被占用，Next.js 可能会自动使用 `3001`。以终端输出的地址为准。
 
-## 8. 登录账号
+## 9. 登录账号
 
 默认测试账号：
 
@@ -167,7 +221,7 @@ http://localhost:3000
 
 管理员可以进入管理后台。普通用户只能使用聊天页面。
 
-## 9. 基础测试流程
+## 10. 基础测试流程
 
 1. 打开 `http://localhost:3000`。
 2. 使用 `admin` 登录。
@@ -181,7 +235,7 @@ http://localhost:3000
 10. 选择知识库范围，提问一个和上传文档相关的问题。
 11. 检查回答、检索来源、执行步骤是否正常展示。
 
-## 10. Langfuse 配置
+## 11. Langfuse 配置
 
 Langfuse 是可选配置。如果这些字段为空，核心 RAG 功能仍然可以运行。
 
@@ -194,7 +248,7 @@ LANGFUSE_TIMEOUT=30
 
 填写后需要重启后端服务。然后发送一次聊天请求，在 Langfuse 的 Tracing 页面确认是否能看到 trace、span 和 generation。
 
-## 11. 常见问题
+## 12. 常见问题
 
 ### Docker 拉取镜像失败
 

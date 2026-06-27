@@ -35,6 +35,8 @@ myAgent 是一个本地 RAG Agent 项目，围绕 FastAPI、LangGraph、Milvus�
 
 ```text
 myAgent/
++-- .env.example             # 一键 Docker Compose 启动的环境变量模板
++-- docker-compose.yml       # 完整启动前端、后端和基础设施服务
 +-- rag-backend/
 |   +-- app/
 |   |   +-- api/              # FastAPI 接口层
@@ -44,12 +46,14 @@ myAgent/
 |   |   +-- services/         # RAG、Graph、存储、认证、会话逻辑
 |   +-- data/docs/            # 本地开发测试文档
 |   +-- docs/                 # 后端相关笔记
-|   +-- docker-compose.yml    # PostgreSQL、Milvus、MinIO、etcd
+|   +-- docker-compose.yml    # 仅启动 PostgreSQL、Milvus、MinIO、etcd，适合本地开发
+|   +-- Dockerfile            # 后端镜像构建文件
 |   +-- requirements.txt
 +-- rag-frontend/
 |   +-- app/                  # Next.js 页面
 |   +-- components/           # 公共组件
 |   +-- lib/                  # 前端 API / 认证工具
+|   +-- Dockerfile            # 前端镜像构建文件
 |   +-- package.json
 +-- docs/
     +-- STARTUP.md            # 本地启动说明
@@ -58,6 +62,43 @@ myAgent/
 ## 快速启动
 
 完整启动流程请看 [docs/STARTUP.md](docs/STARTUP.md)。
+
+### 方式一：Docker Compose 一键启动
+
+适合演示、联调、交付和接近生产的本地运行方式。
+
+```powershell
+cd D:\code\git_localRepository\myAgent
+copy .env.example .env
+```
+
+打开根目录 `.env`，至少填写：
+
+```env
+OPENAI_API_KEY=your_dashscope_api_key
+```
+
+然后启动完整系统：
+
+```powershell
+docker compose up -d --build
+```
+
+常用访问地址：
+
+- 前端页面：http://localhost:3000
+- 后端 Swagger：http://127.0.0.1:8000/docs
+- MinIO 控制台：http://127.0.0.1:9001
+
+停止完整系统：
+
+```powershell
+docker compose down
+```
+
+### 方式二：开发模式手动启动
+
+适合你平时改代码：数据库、Milvus、MinIO 用 Docker 跑，后端和前端在本机启动。
 
 后端简版流程：
 
@@ -77,12 +118,6 @@ copy .env.local.example .env.local
 npm install
 npm run dev
 ```
-
-常用访问地址：
-
-- 前端页面：http://localhost:3000
-- 后端 Swagger：http://127.0.0.1:8000/docs
-- MinIO 控制台：http://127.0.0.1:9001
 
 ## 默认账号
 
@@ -128,6 +163,7 @@ docker compose down
 ## 注意事项
 
 - 不要提交 `.env` 或 `.env.local`，它们里面会包含真实密钥。
+- 根目录 `.env.example` 用于完整 Docker Compose 启动。
 - 后端环境变量模板是 `rag-backend/.env.example`。
 - 前端环境变量模板是 `rag-frontend/.env.local.example`。
 - 上传的原始文件会进入 MinIO。
