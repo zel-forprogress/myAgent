@@ -1130,12 +1130,14 @@ export default function AdminPage() {
                     <h3 className={styles.cardTitle}>文档列表</h3>
                     <p className={styles.cardSubtitle}>上传文件并管理当前知识库中的文档</p>
                   </div>
-                  {docLoading ? <span className={styles.helper}>加载中...</span> : null}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {docLoading ? <span className={styles.helper}>加载中...</span> : null}
+                    <button className={styles.primaryButton} style={{ minHeight: 38, padding: "0 16px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setUploadModalOpen(true)} type="button">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                      上传文档
+                    </button>
+                  </div>
                 </div>
-
-                <button className={styles.primaryButton} style={{ minHeight: 38, padding: "0 16px", fontSize: 13 }} onClick={() => setUploadModalOpen(true)} type="button">
-                  上传文档
-                </button>
 
                 {uploadNotice ? <NoticeBox notice={uploadNotice} /> : null}
 
