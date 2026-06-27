@@ -53,7 +53,7 @@ export default function HomePage() {
   const [renameTitle, setRenameTitle] = useState("");
   const [renameLoading, setRenameLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [knowledgeBasePickerOpen, setKnowledgeBasePickerOpen] = useState(false);
   const [error, setError] = useState("");
   const [sessionKeyword, setSessionKeyword] = useState("");
