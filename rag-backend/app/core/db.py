@@ -41,6 +41,14 @@ def _run_schema_migrations() -> None:
     table_names = set(inspector.get_table_names())
 
     with engine.begin() as connection:
+        if "knowledge_bases" in table_names:
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="knowledge_bases",
+                column_name="embedding_model",
+                column_sql="embedding_model VARCHAR(200)",
+            )
         if "chat_sessions" in table_names:
             _ensure_column(
                 connection,
