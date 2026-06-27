@@ -11,6 +11,7 @@ from app.schemas import (
     KnowledgeBaseResponse,
 )
 from app.services.knowledge_base_service import (
+    count_documents_in_knowledge_base,
     create_knowledge_base,
     delete_knowledge_base,
     list_knowledge_bases,
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def serialize_knowledge_base(knowledge_base) -> KnowledgeBaseResponse:
+    doc_count = count_documents_in_knowledge_base(knowledge_base.collection_name)
     return KnowledgeBaseResponse(
         id=knowledge_base.id,
         name=knowledge_base.name,
@@ -29,6 +31,7 @@ def serialize_knowledge_base(knowledge_base) -> KnowledgeBaseResponse:
         embedding_model=knowledge_base.embedding_model,
         is_default=knowledge_base.is_default,
         created_at=knowledge_base.created_at.isoformat(),
+        document_count=doc_count,
     )
 
 

@@ -507,8 +507,14 @@ export default function AdminPage() {
   async function handleCreateKnowledgeBase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = newKnowledgeBaseName.trim();
-    if (!trimmedName) {
-      setKnowledgeBaseNotice({ type: "error", text: "请输入知识库名称。" });
+    const trimmedCollection = newCollectionName.trim();
+    const trimmedEmbedding = newEmbeddingModel.trim();
+    if (!trimmedName || !trimmedCollection || !trimmedEmbedding) {
+      setKnowledgeBaseNotice({ type: "error", text: "请填写所有必填字段。" });
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9_]*$/.test(trimmedCollection)) {
+      setKnowledgeBaseNotice({ type: "error", text: "Collection 名称只能包含小写字母、数字和下划线。" });
       return;
     }
 
@@ -521,8 +527,8 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: trimmedName,
-          collection_name: newCollectionName.trim() || undefined,
-          embedding_model: newEmbeddingModel.trim() || undefined,
+          collection_name: trimmedCollection,
+          embedding_model: trimmedEmbedding,
         }),
       });
       const payload = (await response.json()) as
@@ -1232,8 +1238,10 @@ export default function AdminPage() {
                   <thead>
                     <tr>
                       <th>名称</th>
-                      <th>slug</th>
-                      <th>collection</th>
+                      <th>Collection</th>
+                      <th>Embedding 模型</th>
+                      <th>文档数</th>
+                      <th>创建时间</th>
                       <th>操作</th>
                     </tr>
                   </thead>
@@ -1254,8 +1262,10 @@ export default function AdminPage() {
                             {item.name}
                           </button>
                         </td>
-                        <td>{item.slug}</td>
                         <td>{item.collection_name}</td>
+                        <td>{item.embedding_model || "-"}</td>
+                        <td>{item.document_count}</td>
+                        <td>{new Date(item.created_at).toLocaleString("zh-CN")}</td>
                         <td>
                           <button
                             className={styles.deleteButton}
@@ -1270,7 +1280,7 @@ export default function AdminPage() {
                     ))}
                     {!visibleKnowledgeBases.length ? (
                       <tr>
-                        <td colSpan={4} className={styles.emptyTableCell}>
+                        <td colSpan={6} className={styles.emptyTableCell}>
                           没有找到匹配的知识库
                         </td>
                       </tr>
@@ -1501,9 +1511,10 @@ export default function AdminPage() {
 
             <form className={styles.modalForm} onSubmit={handleCreateKnowledgeBase}>
               <label className={styles.label} htmlFor="knowledge-base-name">
-                知识库名称
+                知识库名称 <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <input
+                required
                 autoFocus
                 id="knowledge-base-name"
                 className={styles.input}
@@ -1511,27 +1522,39 @@ export default function AdminPage() {
                 onChange={(event) => setNewKnowledgeBaseName(event.target.value)}
                 placeholder="例如：产品文档库"
               />
+
               <label className={styles.label} htmlFor="kb-collection-name">
-                Collection 名称（可选）
+                Collection 名称 <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <input
+                required
                 id="kb-collection-name"
                 className={styles.input}
                 value={newCollectionName}
-                onChange={(event) => setNewCollectionName(event.target.value)}
-                placeholder="留空则自动生成"
+                onChange={(event) => setNewCollectionName(event.target.value.replace(/[^a-z0-9_]/g, ""))}
+                placeholder="小写字母、数字、下划线"
+                pattern="^[a-z0-9][a-z0-9_]*$"
+                title="只能包含小写字母、数字和下划线"
               />
 
               <label className={styles.label} htmlFor="kb-embedding-model">
-                Embedding 模型（可选）
+                Embedding 模型 <span style={{ color: "var(--danger)" }}>*</span>
               </label>
-              <input
+              <select
+                required
                 id="kb-embedding-model"
-                className={styles.input}
+                className={styles.select}
                 value={newEmbeddingModel}
                 onChange={(event) => setNewEmbeddingModel(event.target.value)}
-                placeholder="留空则使用系统默认"
-              />
+              >
+                <option value="">请选择...</option>
+                <option value="text-embedding-v4">text-embedding-v4 (通义千问)</option>
+                <option value="text-embedding-v3">text-embedding-v3 (通义千问)</option>
+                <option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</option>
+                <option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</option>
+                <option value="bge-m3">BGE-M3 (BAAI)</option>
+                <option value="bge-large-zh-v1.5">BGE-Large-ZH (BAAI)</option>
+              </select>
 
               <p className={styles.helperText}>
                 系统会自动生成 slug 和 MinIO bucket。

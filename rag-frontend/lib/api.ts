@@ -25,6 +25,7 @@ export type KnowledgeBaseResponse = {
   embedding_model?: string | null;
   is_default: boolean;
   created_at: string;
+  document_count: number;
 };
 
 export type DeleteKnowledgeBaseResponse = {

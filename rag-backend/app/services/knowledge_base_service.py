@@ -33,6 +33,20 @@ def build_collection_name(slug: str) -> str:
     return f"{base}_{slug.replace('-', '_')}"
 
 
+def count_documents_in_knowledge_base(collection_name: str) -> int:
+    from app.services.rag_service import get_milvus_client
+
+    client = get_milvus_client()
+    if not client.has_collection(collection_name):
+        return 0
+    try:
+        client.load_collection(collection_name)
+        rows = client.query(collection_name=collection_name, filter="", output_fields=["source"], limit=10000)
+        return len(set(row.get("source", "") for row in rows if row.get("source")))
+    except Exception:
+        return 0
+
+
 def list_knowledge_bases(db: Session) -> list[KnowledgeBase]:
     return db.query(KnowledgeBase).order_by(KnowledgeBase.created_at.asc()).all()
 
@@ -48,8 +62,8 @@ def get_knowledge_base_by_name(db: Session, name: str) -> KnowledgeBase | None:
 def create_knowledge_base(
     db: Session,
     name: str,
-    collection_name: str | None = None,
-    embedding_model: str | None = None,
+    collection_name: str,
+    embedding_model: str,
 ) -> KnowledgeBase:
     trimmed_name = name.strip()
     if not trimmed_name:
@@ -66,14 +80,11 @@ def create_knowledge_base(
         index += 1
         slug = f"{base_slug}-{index}"
 
-    resolved_collection = (collection_name or "").strip() or build_collection_name(slug)
-    resolved_embedding = (embedding_model or "").strip() or settings.embedding_model
-
     knowledge_base = KnowledgeBase(
         name=trimmed_name,
         slug=slug,
-        collection_name=resolved_collection,
-        embedding_model=resolved_embedding,
+        collection_name=collection_name.strip(),
+        embedding_model=embedding_model.strip(),
         is_default=False,
     )
     db.add(knowledge_base)
