@@ -346,10 +346,10 @@ def stream_rag_answer(
         [
             (
                 "system",
-                "浣犳槸涓€涓弗璋ㄧ殑鐭ヨ瘑搴撻棶绛斿姪鎵嬨€傝鍙牴鎹粰瀹氳祫鏂欏洖绛旈棶棰樸€?"
-                "濡傛灉璧勬枡涓病鏈夌瓟妗堬紝璇风洿鎺ヨ璧勬枡涓病鏈夋彁鍒般€?",
+                "你是一个严谨的知识库问答助手。请只根据给定资料回答问题。"
+                "如果资料中没有答案，请直接说资料中没有提到。",
             ),
-            ("human", "璧勬枡:\n{context}\n\n闂: {question}"),
+            ("human", "资料:\n{context}\n\n问题: {question}"),
         ]
     )
 
@@ -386,7 +386,7 @@ def stream_direct_answer(
 ) -> dict:
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", "浣犳槸涓€涓畝娲佸弸濂界殑鍔╂墜銆傚綋鍓嶉棶棰樹笉闇€瑕佹煡璇㈢煡璇嗗簱锛岃鐩存帴鍥炵瓟銆?"),
+            ("system", "你是一个简洁友好的助手。当前问题不需要查询知识库，请直接回答。"),
             ("human", "{question}"),
         ]
     )

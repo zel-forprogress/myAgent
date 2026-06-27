@@ -19,3 +19,8 @@ pymilvus
 pypdf
 tiktoken
 python-multipart
+
+# testing
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-mock>=3.14
