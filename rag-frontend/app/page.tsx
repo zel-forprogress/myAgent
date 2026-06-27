@@ -538,6 +538,14 @@ export default function HomePage() {
               <h3 className={styles.detailTitle}>详细信息</h3>
               <p className={styles.detailSubtitle}>执行链路、改写结果与检索来源</p>
             </div>
+            <button
+              className={styles.panelToggleButton}
+              onClick={() => setInspectorOpen(false)}
+              title="收起详情"
+              type="button"
+            >
+              <span className={styles.panelToggleIcon} />
+            </button>
           </div>
           <div className={styles.statusRow}>
             <StatusBadge label="Route" value={result?.route || "-"} />
