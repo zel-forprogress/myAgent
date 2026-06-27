@@ -1552,9 +1552,6 @@ export default function AdminPage() {
                 <option value="text-embedding-v3">text-embedding-v3 (通义千问)</option>
               </select>
 
-              <p className={styles.helperText}>
-                系统会自动生成 slug 和 MinIO bucket。
-              </p>
               {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
               <div className={styles.modalActions}>
                 <button
