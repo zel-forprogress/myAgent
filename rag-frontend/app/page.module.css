@@ -381,6 +381,12 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  transition: margin-right 180ms ease;
+}
+
+.workspaceWithInspector {
+  margin-right: 400px;
 }
 
 /* ===== Chat area ===== */
@@ -456,25 +462,26 @@
 .messageList {
   display: grid;
   gap: 14px;
-  max-width: 820px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
 }
 
 .userMessage,
 .assistantMessage {
-  max-width: 88%;
   padding: 14px 18px;
   border-radius: 8px;
   line-height: 1.75;
 }
 
 .userMessage {
+  max-width: min(560px, 72%);
   justify-self: end;
   background: var(--primary-soft);
   color: var(--body);
 }
 
 .assistantMessage {
+  max-width: min(760px, 88%);
   justify-self: start;
   background: #fff;
   border: 1px solid var(--card-border);
@@ -766,10 +773,10 @@
 /* ===== Detail panel (slide-over) ===== */
 .detailOverlay {
   position: fixed;
-  top: 0;
+  top: 64px;
   right: 0;
   bottom: 0;
-  width: min(400px, 92vw);
+  width: 400px;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -783,7 +790,7 @@
 
 .detailHeader {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 12px;
 }
@@ -920,4 +927,14 @@ input:focus-visible,
 textarea:focus-visible {
   outline: 2px solid rgba(101, 88, 223, 0.28);
   outline-offset: 2px;
+}
+
+@media (max-width: 1100px) {
+  .workspaceWithInspector {
+    margin-right: 0;
+  }
+
+  .detailOverlay {
+    width: min(400px, 92vw);
+  }
 }
