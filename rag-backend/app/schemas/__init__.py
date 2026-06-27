@@ -20,6 +20,7 @@ from app.schemas.document import (
 from app.schemas.knowledge_base import (
     DeleteKnowledgeBaseResponse,
     KnowledgeBaseCreateRequest,
+    KnowledgeBaseRenameRequest,
     KnowledgeBaseResponse,
 )
 from app.schemas.session import (
@@ -45,6 +46,7 @@ __all__ = [
     "IngestRequest",
     "IngestResponse",
     "KnowledgeBaseCreateRequest",
+    "KnowledgeBaseRenameRequest",
     "KnowledgeBaseResponse",
     "LoginRequest",
     "LoginResponse",

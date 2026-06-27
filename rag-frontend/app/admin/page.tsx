@@ -130,6 +130,9 @@ export default function AdminPage() {
   const [knowledgeBaseNotice, setKnowledgeBaseNotice] = useState<Notice | null>(null);
   const [creatingKnowledgeBase, setCreatingKnowledgeBase] = useState(false);
   const [deletingKnowledgeBaseId, setDeletingKnowledgeBaseId] = useState("");
+  const [editingKbId, setEditingKbId] = useState("");
+  const [editKbName, setEditKbName] = useState("");
+  const [renamingKb, setRenamingKb] = useState(false);
 
   // --- User management ---
   type UserListItem = { id: string; username: string; role: string; created_at: string };
@@ -564,6 +567,33 @@ export default function AdminPage() {
       });
     } finally {
       setCreatingKnowledgeBase(false);
+    }
+  }
+
+  async function handleRenameKnowledgeBase(knowledgeBaseId: string) {
+    const trimmedName = editKbName.trim();
+    if (!trimmedName) {
+      setKnowledgeBaseNotice({ type: "error", text: "请输入知识库名称。" });
+      return;
+    }
+    setRenamingKb(true);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/knowledge-bases/${knowledgeBaseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName }),
+      });
+      const payload = (await response.json()) as KnowledgeBaseResponse | { detail?: string };
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "重命名失败。");
+      setKnowledgeBases((prev) => prev.map((kb) => (kb.id === knowledgeBaseId ? (payload as KnowledgeBaseResponse) : kb)));
+      setEditingKbId("");
+      setEditKbName("");
+      setKnowledgeBaseNotice({ type: "success", text: "重命名成功。" });
+    } catch (error) {
+      if (error instanceof AuthError) { handleAuthAwareError(error, "重命名失败。"); return; }
+      setKnowledgeBaseNotice({ type: "error", text: error instanceof Error ? error.message : "重命名失败。" });
+    } finally {
+      setRenamingKb(false);
     }
   }
 
@@ -1249,32 +1279,49 @@ export default function AdminPage() {
                     {paginatedKnowledgeBases.map((item) => (
                       <tr key={item.id}>
                         <td>
-                          <button
-                            className={styles.knowledgeBaseLink}
-                            onClick={() => {
-                              setSelectedKnowledgeBaseId(item.id);
-                              setKnowledgeBaseDetailOpen(true);
-                              setFocusedKnowledgeBaseId("");
-                              setFocusedDocumentSource("");
-                            }}
-                            type="button"
-                          >
-                            {item.name}
-                          </button>
+                          {editingKbId === item.id ? (
+                            <input
+                              className={styles.input}
+                              value={editKbName}
+                              onChange={(e) => setEditKbName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") void handleRenameKnowledgeBase(item.id); if (e.key === "Escape") { setEditingKbId(""); setEditKbName(""); } }}
+                              autoFocus
+                            />
+                          ) : (
+                            <button
+                              className={styles.knowledgeBaseLink}
+                              onClick={() => {
+                                setSelectedKnowledgeBaseId(item.id);
+                                setKnowledgeBaseDetailOpen(true);
+                                setFocusedKnowledgeBaseId("");
+                                setFocusedDocumentSource("");
+                              }}
+                              type="button"
+                            >
+                              {item.name}
+                            </button>
+                          )}
                         </td>
                         <td>{item.collection_name}</td>
                         <td>{item.embedding_model || "-"}</td>
                         <td>{item.document_count}</td>
                         <td>{new Date(item.created_at).toLocaleString("zh-CN")}</td>
                         <td>
-                          <button
-                            className={styles.deleteButton}
-                            disabled={deletingKnowledgeBaseId === item.id}
-                            onClick={() => void handleDeleteKnowledgeBase(item)}
-                            type="button"
-                          >
-                            {deletingKnowledgeBaseId === item.id ? "删除中..." : "删除"}
-                          </button>
+                          {editingKbId === item.id ? (
+                            <>
+                              <button className={styles.primaryButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={renamingKb} onClick={() => void handleRenameKnowledgeBase(item.id)} type="button">
+                                {renamingKb ? "保存中..." : "保存"}
+                              </button>
+                              <button className={styles.refreshButton} style={{ minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(""); setEditKbName(""); }} type="button">取消</button>
+                            </>
+                          ) : (
+                            <>
+                              <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(item.id); setEditKbName(item.name); }} type="button">编辑</button>
+                              <button className={styles.deleteButton} disabled={deletingKnowledgeBaseId === item.id} onClick={() => void handleDeleteKnowledgeBase(item)} type="button">
+                                {deletingKnowledgeBaseId === item.id ? "删除中..." : "删除"}
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}

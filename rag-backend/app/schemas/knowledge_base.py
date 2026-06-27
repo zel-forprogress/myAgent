@@ -34,6 +34,10 @@ class KnowledgeBaseResponse(BaseModel):
     document_count: int = 0
 
 
+class KnowledgeBaseRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="New knowledge base name")
+
+
 class DeleteKnowledgeBaseResponse(BaseModel):
     success: bool
     message: str

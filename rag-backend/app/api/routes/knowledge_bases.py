@@ -8,6 +8,7 @@ from app.models import User
 from app.schemas import (
     DeleteKnowledgeBaseResponse,
     KnowledgeBaseCreateRequest,
+    KnowledgeBaseRenameRequest,
     KnowledgeBaseResponse,
 )
 from app.services.knowledge_base_service import (
@@ -15,6 +16,7 @@ from app.services.knowledge_base_service import (
     create_knowledge_base,
     delete_knowledge_base,
     list_knowledge_bases,
+    rename_knowledge_base,
 )
 
 router = APIRouter()
@@ -68,6 +70,27 @@ def post_knowledge_base(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Create knowledge base failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/knowledge-bases/{knowledge_base_id}",
+    response_model=KnowledgeBaseResponse,
+)
+def rename_knowledge_base_route(
+    knowledge_base_id: str,
+    request: KnowledgeBaseRenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> KnowledgeBaseResponse:
+    try:
+        _ = current_user
+        knowledge_base = rename_knowledge_base(db, knowledge_base_id, request.name)
+        return serialize_knowledge_base(knowledge_base)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Rename knowledge base failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
