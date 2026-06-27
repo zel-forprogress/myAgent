@@ -133,6 +133,7 @@ export default function AdminPage() {
   const [editingKbId, setEditingKbId] = useState("");
   const [editKbName, setEditKbName] = useState("");
   const [renamingKb, setRenamingKb] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   // --- User management ---
   type UserListItem = { id: string; username: string; role: string; created_at: string };
@@ -639,8 +640,7 @@ export default function AdminPage() {
     }
   }
 
-  async function handleUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleUpload() {
     if (!selectedKnowledgeBase) {
       setUploadNotice({ type: "error", text: "请先选择知识库。" });
       return;
@@ -1132,33 +1132,53 @@ export default function AdminPage() {
                   {docLoading ? <span className={styles.helper}>加载中...</span> : null}
                 </div>
 
-                <form className={styles.uploadToolbar} onSubmit={handleUpload}>
-                  <input
-                    id="upload-file"
-                    className={styles.fileInput}
-                    type="file"
-                    accept=".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={(event) =>
-                      setSelectedFile(
-                        event.target.files && event.target.files[0]
-                          ? event.target.files[0]
-                          : null,
-                      )
-                    }
-                  />
-                  <button
-                    className={styles.primaryButton}
-                    disabled={uploadLoading}
-                    type="submit"
-                  >
-                    {uploadLoading ? "上传中..." : "上传文档"}
-                  </button>
-                </form>
+                <button className={styles.primaryButton} style={{ minHeight: 38, padding: "0 16px", fontSize: 13 }} onClick={() => setUploadModalOpen(true)} type="button">
+                  上传文档
+                </button>
 
-                {selectedFile ? (
-                  <p className={styles.selectedFile}>已选择：{selectedFile.name}</p>
-                ) : null}
                 {uploadNotice ? <NoticeBox notice={uploadNotice} /> : null}
+
+                {/* Upload Modal */}
+                {uploadModalOpen ? (
+                  <div className={styles.modalBackdrop} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }}>
+                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                      <div className={styles.modalHeader}>
+                        <div>
+                          <h3 className={styles.cardTitle}>上传文档</h3>
+                          <p className={styles.cardSubtitle}>选择文件上传到当前知识库，支持 .txt .md .pdf .docx</p>
+                        </div>
+                        <button
+                          aria-label="关闭上传弹窗"
+                          className={styles.modalCloseButton}
+                          onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }}
+                          type="button"
+                        >×</button>
+                      </div>
+                      <div className={styles.modalForm} onSubmit={(e) => e.preventDefault()}>
+                        <label className={styles.fileDropZone} htmlFor="upload-file-input">
+                          <input
+                            id="upload-file-input"
+                            type="file"
+                            accept=".txt,.md,.pdf,.docx"
+                            onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                            style={{ display: "none" }}
+                          />
+                          {selectedFile ? (
+                            <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
+                          ) : (
+                            <span>点击选择文件，或将文件拖拽到此处</span>
+                          )}
+                        </label>
+                        <div className={styles.modalActions}>
+                          <button className={styles.refreshButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
+                          <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload().then(() => setUploadModalOpen(false)); }} type="button">
+                            {uploadLoading ? "上传中..." : "上传"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
