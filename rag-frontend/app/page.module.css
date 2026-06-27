@@ -50,13 +50,16 @@
 }
 
 .brandText strong {
+  display: block;
   color: var(--heading);
   font-size: 14px;
 }
 
 .brandText small {
+  display: block;
   color: var(--helper);
   font-size: 11px;
+  margin-top: 2px;
 }
 
 /* --- Navigation --- */
