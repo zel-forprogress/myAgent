@@ -32,13 +32,25 @@ def serialize_user_item(user: User) -> UserListItem:
 
 @router.get("", response_model=UserListResponse)
 def list_users(
+    page: int = 1,
+    page_size: int = 15,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> UserListResponse:
-    users = db.query(User).order_by(User.created_at.desc()).all()
+    total = db.query(User).count()
+    offset = (max(page, 1) - 1) * max(page_size, 1)
+    users = (
+        db.query(User)
+        .order_by(User.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
     return UserListResponse(
         users=[serialize_user_item(u) for u in users],
-        total=len(users),
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 

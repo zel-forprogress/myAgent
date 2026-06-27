@@ -137,6 +137,8 @@ export default function AdminPage() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"user" | "admin">("user");
+  const [userPage, setUserPage] = useState(1);
+  const USER_PAGE_SIZE = 15;
 
   const selectedKnowledgeBase = useMemo(
     () =>
@@ -310,7 +312,7 @@ export default function AdminPage() {
       }
 
       await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList)]);
-      try { await fetchUsers(); } catch { /* users tab will load on demand */ }
+      try { await fetchUsers(userPage, USER_PAGE_SIZE); } catch { /* users tab will load on demand */ }
       setAuthReady(true);
     } catch (error) {
       handleAuthAwareError(error, "初始化后台失败。");
@@ -739,8 +741,10 @@ export default function AdminPage() {
     }
   }
 
-  async function fetchUsers() {
-    const response = await authFetch(`${apiBaseUrl}/admin/users`);
+  async function fetchUsers(page = 1, pageSize = USER_PAGE_SIZE) {
+    const response = await authFetch(
+      `${apiBaseUrl}/admin/users?page=${page}&page_size=${pageSize}`,
+    );
     const payload = (await response.json()) as { users: UserListItem[]; total: number } | { detail?: string };
     if (!response.ok) {
       throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取用户列表失败。");
@@ -774,7 +778,7 @@ export default function AdminPage() {
       setNewUsername("");
       setNewPassword("");
       setNewRole("user");
-      await fetchUsers();
+      await fetchUsers(userPage, USER_PAGE_SIZE);
     } catch (error) {
       if (error instanceof AuthError) { handleAuthAwareError(error, "创建用户失败。"); return; }
       setUserNotice({ type: "error", text: error instanceof Error ? error.message : "创建用户失败。" });
@@ -794,7 +798,7 @@ export default function AdminPage() {
         throw new Error(payload.detail || "删除用户失败。");
       }
       setUserNotice({ type: "success", text: `用户 ${username} 已删除。` });
-      await fetchUsers();
+      await fetchUsers(userPage, USER_PAGE_SIZE);
     } catch (error) {
       if (error instanceof AuthError) { handleAuthAwareError(error, "删除用户失败。"); return; }
       setUserNotice({ type: "error", text: error instanceof Error ? error.message : "删除用户失败。" });
@@ -1343,6 +1347,13 @@ export default function AdminPage() {
                 </table>
               </div>
               <p className={styles.helperText}>共 {userTotal} 个用户</p>
+              <Pagination
+                currentPage={userPage}
+                pageSize={USER_PAGE_SIZE}
+                totalItems={userTotal}
+                itemLabel="个用户"
+                onPageChange={setUserPage}
+              />
               {userNotice ? <NoticeBox notice={userNotice} /> : null}
             </section>
           ) : null}

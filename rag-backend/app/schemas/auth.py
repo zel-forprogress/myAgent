@@ -49,6 +49,8 @@ class UserListItem(BaseModel):
 class UserListResponse(BaseModel):
     users: List[UserListItem]
     total: int
+    page: int = 1
+    page_size: int = 15
 
 
 class LoginResponse(BaseModel):
