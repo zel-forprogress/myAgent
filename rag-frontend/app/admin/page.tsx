@@ -1550,10 +1550,6 @@ export default function AdminPage() {
                 <option value="">请选择...</option>
                 <option value="text-embedding-v4">text-embedding-v4 (通义千问)</option>
                 <option value="text-embedding-v3">text-embedding-v3 (通义千问)</option>
-                <option value="text-embedding-3-small">text-embedding-3-small (OpenAI)</option>
-                <option value="text-embedding-3-large">text-embedding-3-large (OpenAI)</option>
-                <option value="bge-m3">BGE-M3 (BAAI)</option>
-                <option value="bge-large-zh-v1.5">BGE-Large-ZH (BAAI)</option>
               </select>
 
               <p className={styles.helperText}>
