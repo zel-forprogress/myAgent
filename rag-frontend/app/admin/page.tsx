@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { MenuIcon, type MenuIconVariant } from "../../components/MenuIcon";
+import { Modal } from "../../components/Modal";
 import { Pagination } from "../../components/Pagination";
 import styles from "./page.module.css";
 import {
@@ -1138,36 +1139,29 @@ export default function AdminPage() {
 
                 {uploadNotice ? <NoticeBox notice={uploadNotice} /> : null}
 
-                {/* Upload Modal */}
-                {uploadModalOpen ? (
-                  <div className={styles.modalOverlay} role="presentation">
-                    <div aria-labelledby="upload-document-title" aria-modal="true" className={styles.modal} role="dialog">
-                      <div className={styles.modalHeader}>
-                        <div>
-                          <h3 className={styles.modalTitle} id="upload-document-title">上传文档</h3>
-                          <p className={styles.modalSubtitle}>选择文件上传到当前知识库，支持 .txt .md .pdf .docx</p>
-                        </div>
-                        <button aria-label="关闭上传弹窗" className={styles.modalCloseButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">×</button>
-                      </div>
-                      <div className={styles.modalForm}>
-                        <label className={styles.fileDropZone} htmlFor="upload-file-input">
-                          <input id="upload-file-input" type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
-                          {selectedFile ? (
-                            <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
-                          ) : (
-                            <span>点击选择文件，或将文件拖拽到此处</span>
-                          )}
-                        </label>
-                        <div className={styles.modalActions}>
-                          <button className={styles.backButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
-                          <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload().then(() => setUploadModalOpen(false)); }} type="button">
-                            {uploadLoading ? "上传中..." : "上传"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                <Modal
+                  open={uploadModalOpen}
+                  title="上传文档"
+                  subtitle="选择文件上传到当前知识库，支持 .txt .md .pdf .docx"
+                  onClose={() => { setUploadModalOpen(false); setSelectedFile(null); }}
+                  actions={
+                    <>
+                      <button className={styles.backButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
+                      <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload().then(() => setUploadModalOpen(false)); }} type="button">
+                        {uploadLoading ? "上传中..." : "上传"}
+                      </button>
+                    </>
+                  }
+                >
+                  <label className={styles.fileDropZone} htmlFor="upload-file-input">
+                    <input id="upload-file-input" type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
+                    {selectedFile ? (
+                      <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
+                    ) : (
+                      <span>点击选择文件，或将文件拖拽到此处</span>
+                    )}
+                  </label>
+                </Modal>
 
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
@@ -1535,37 +1529,19 @@ export default function AdminPage() {
           ) : null}
         </section>
       </section>
-      {createKnowledgeBaseOpen ? (
-        <div className={styles.modalOverlay} role="presentation">
-          <div
-            aria-labelledby="create-knowledge-base-title"
-            aria-modal="true"
-            className={styles.modal}
-            role="dialog"
-          >
-            <div className={styles.modalHeader}>
-              <div>
-                <h3 className={styles.modalTitle} id="create-knowledge-base-title">
-                  创建知识库
-                </h3>
-                <p className={styles.modalSubtitle}>
-                  创建一个新的知识库，用于存储、向量化和检索文档。
-                </p>
-              </div>
-              <button
-                aria-label="关闭创建知识库弹窗"
-                className={styles.modalCloseButton}
-                onClick={() => {
-                  setCreateKnowledgeBaseOpen(false);
-                  setKnowledgeBaseNotice(null);
-                }}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-
-            <form className={styles.modalForm} onSubmit={handleCreateKnowledgeBase}>
+      <Modal
+        open={createKnowledgeBaseOpen}
+        title="创建知识库"
+        subtitle="创建一个新的知识库，用于存储、向量化和检索文档。"
+        onClose={() => { setCreateKnowledgeBaseOpen(false); setKnowledgeBaseNotice(null); }}
+        onSubmit={handleCreateKnowledgeBase}
+        actions={
+          <>
+            <button className={styles.backButton} onClick={() => { setCreateKnowledgeBaseOpen(false); setKnowledgeBaseNotice(null); }} type="button">取消</button>
+            <button className={styles.primaryButton} disabled={creatingKnowledgeBase} type="submit">{creatingKnowledgeBase ? "创建中..." : "创建"}</button>
+          </>
+        }
+      >
               <label className={styles.label} htmlFor="knowledge-base-name">
                 知识库名称 <span style={{ color: "var(--danger)" }}>*</span>
               </label>
@@ -1609,29 +1585,7 @@ export default function AdminPage() {
               </select>
 
               {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
-              <div className={styles.modalActions}>
-                <button
-                  className={styles.backButton}
-                  onClick={() => {
-                    setCreateKnowledgeBaseOpen(false);
-                    setKnowledgeBaseNotice(null);
-                  }}
-                  type="button"
-                >
-                  取消
-                </button>
-                <button
-                  className={styles.primaryButton}
-                  disabled={creatingKnowledgeBase}
-                  type="submit"
-                >
-                  {creatingKnowledgeBase ? "创建中..." : "创建"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
+      </Modal>
     </main>
   );
 }
