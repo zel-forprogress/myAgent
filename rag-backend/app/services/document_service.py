@@ -158,18 +158,22 @@ def delete_document_record(
         )
         .first()
     )
-    if record is not None:
-        db.expunge(record)
-        persistent_record = record
-        record = (
-            db.query(KnowledgeBaseDocument)
-            .filter(
-                KnowledgeBaseDocument.knowledge_base_id == knowledge_base_id,
-                KnowledgeBaseDocument.source == source,
-            )
-            .first()
-        )
-        db.delete(record)
-        db.commit()
-        return persistent_record
-    return None
+    if record is None:
+        return None
+
+    # Save a snapshot before deletion so the caller can inspect the removed row.
+    snapshot = KnowledgeBaseDocument(
+        id=record.id,
+        knowledge_base_id=record.knowledge_base_id,
+        filename=record.filename,
+        source=record.source,
+        file_type=record.file_type,
+        storage_provider=record.storage_provider,
+        storage_bucket=record.storage_bucket,
+        storage_object_key=record.storage_object_key,
+        file_size=record.file_size,
+        created_at=record.created_at,
+    )
+    db.delete(record)
+    db.commit()
+    return snapshot
