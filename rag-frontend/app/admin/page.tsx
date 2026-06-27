@@ -1140,29 +1140,18 @@ export default function AdminPage() {
 
                 {/* Upload Modal */}
                 {uploadModalOpen ? (
-                  <div className={styles.modalBackdrop} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }}>
-                    <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                  <div className={styles.modalOverlay} role="presentation">
+                    <div aria-labelledby="upload-document-title" aria-modal="true" className={styles.modal} role="dialog">
                       <div className={styles.modalHeader}>
                         <div>
-                          <h3 className={styles.cardTitle}>上传文档</h3>
-                          <p className={styles.cardSubtitle}>选择文件上传到当前知识库，支持 .txt .md .pdf .docx</p>
+                          <h3 className={styles.modalTitle} id="upload-document-title">上传文档</h3>
+                          <p className={styles.modalSubtitle}>选择文件上传到当前知识库，支持 .txt .md .pdf .docx</p>
                         </div>
-                        <button
-                          aria-label="关闭上传弹窗"
-                          className={styles.modalCloseButton}
-                          onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }}
-                          type="button"
-                        >×</button>
+                        <button aria-label="关闭上传弹窗" className={styles.modalCloseButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">×</button>
                       </div>
-                      <div className={styles.modalForm} onSubmit={(e) => e.preventDefault()}>
+                      <div className={styles.modalForm}>
                         <label className={styles.fileDropZone} htmlFor="upload-file-input">
-                          <input
-                            id="upload-file-input"
-                            type="file"
-                            accept=".txt,.md,.pdf,.docx"
-                            onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-                            style={{ display: "none" }}
-                          />
+                          <input id="upload-file-input" type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
                           {selectedFile ? (
                             <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
                           ) : (
@@ -1170,7 +1159,7 @@ export default function AdminPage() {
                           )}
                         </label>
                         <div className={styles.modalActions}>
-                          <button className={styles.refreshButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
+                          <button className={styles.backButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
                           <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload().then(() => setUploadModalOpen(false)); }} type="button">
                             {uploadLoading ? "上传中..." : "上传"}
                           </button>
