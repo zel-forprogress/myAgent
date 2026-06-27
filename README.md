@@ -61,7 +61,7 @@ myAgent/
 
 ## 快速启动
 
-完整启动流程请看 [docs/STARTUP.md](docs/STARTUP.md)。
+完整启动流程请看 [docs/STARTUP.md](docs/STARTUP.md)。如果要用 Docker Compose 做完整部署，请看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ### 方式一：Docker Compose 一键启动
 

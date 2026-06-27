@@ -168,7 +168,21 @@ GET http://127.0.0.1:8000/health
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "services": {
+    "api": {
+      "status": "ok"
+    },
+    "postgres": {
+      "status": "ok"
+    },
+    "milvus": {
+      "status": "ok"
+    },
+    "object_storage": {
+      "status": "ok"
+    }
+  }
 }
 ```
 
