@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
-  --bg: #f3f5f8;
+  --bg: #f4f6fa;
   --panel: #ffffff;
-  --panel-alt: #f8fafc;
+  --panel-alt: #fafbfc;
   --text: #172033;
   --muted: #64748b;
   --line: #d7deea;
@@ -11,7 +11,31 @@
   --success: #15803d;
   --warning: #b45309;
   --danger: #b91c1c;
-  --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  --shadow: 0 2px 8px rgba(25, 39, 68, 0.04);
+
+  /* Admin / unified sidebar tokens */
+  --sidebar-bg: #171e2e;
+  --sidebar-text: #dce3f0;
+  --sidebar-muted: #aeb9cc;
+  --sidebar-divider: #2a3347;
+  --sidebar-hover: #202a3d;
+  --sidebar-active: #30385e;
+  --sidebar-indicator: #8b7cf6;
+
+  /* Primary action */
+  --primary: #6558df;
+  --primary-hover: #5449d1;
+  --primary-soft: #ebe9fd;
+
+  /* Surface */
+  --card-border: #e1e6ef;
+  --card-divider: #edf0f5;
+  --header-border: #e3e8f1;
+
+  /* Typography */
+  --heading: #121a2b;
+  --body: #30394d;
+  --helper: #758098;
 }
 
 * {
