@@ -127,8 +127,13 @@ def sync_document_records(db: Session, knowledge_base: KnowledgeBase) -> list[Kn
     return list_document_records(db, knowledge_base.id)
 
 
-def list_document_records(db: Session, knowledge_base_id: str) -> list[KnowledgeBaseDocument]:
-    return (
+def list_document_records(
+    db: Session,
+    knowledge_base_id: str,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[KnowledgeBaseDocument]:
+    query = (
         db.query(KnowledgeBaseDocument)
         .filter(KnowledgeBaseDocument.knowledge_base_id == knowledge_base_id)
         .order_by(
@@ -136,12 +141,30 @@ def list_document_records(db: Session, knowledge_base_id: str) -> list[Knowledge
             KnowledgeBaseDocument.updated_at.desc(),
             KnowledgeBaseDocument.id.desc(),
         )
-        .all()
+    )
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+    return query.all()
+
+
+def count_document_records(db: Session, knowledge_base_id: str) -> int:
+    return (
+        db.query(KnowledgeBaseDocument)
+        .filter(KnowledgeBaseDocument.knowledge_base_id == knowledge_base_id)
+        .count()
     )
 
 
-def list_document_infos(db: Session, knowledge_base_id: str) -> list[DocumentInfo]:
-    return [_to_schema(record) for record in list_document_records(db, knowledge_base_id)]
+def list_document_infos(
+    db: Session,
+    knowledge_base_id: str,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[DocumentInfo]:
+    return [
+        _to_schema(record)
+        for record in list_document_records(db, knowledge_base_id, offset=offset, limit=limit)
+    ]
 
 
 def delete_document_record(

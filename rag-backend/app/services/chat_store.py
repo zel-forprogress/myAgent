@@ -32,11 +32,26 @@ def create_chat_session(
     return session
 
 
-def list_chat_sessions(db: Session, current_user: User) -> list[ChatSession]:
+def list_chat_sessions(
+    db: Session,
+    current_user: User,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[ChatSession]:
     query = db.query(ChatSession)
     if current_user.role != "admin":
         query = query.filter(ChatSession.user_id == current_user.id)
-    return query.order_by(ChatSession.updated_at.desc()).all()
+    query = query.order_by(ChatSession.updated_at.desc())
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+    return query.all()
+
+
+def count_chat_sessions(db: Session, current_user: User) -> int:
+    query = db.query(ChatSession)
+    if current_user.role != "admin":
+        query = query.filter(ChatSession.user_id == current_user.id)
+    return query.count()
 
 
 def get_chat_session(

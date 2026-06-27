@@ -55,6 +55,9 @@ export type SessionResponse = {
 
 export type SessionListResponse = {
   sessions: SessionResponse[];
+  total?: number;
+  page?: number;
+  page_size?: number;
 };
 
 export type MessageResponse = {
@@ -102,6 +105,9 @@ export type DocumentsResponse = {
   knowledge_base_name: string;
   collection: string;
   documents: DocumentInfo[];
+  total?: number;
+  page?: number;
+  page_size?: number;
 };
 
 export type IngestResponse = {

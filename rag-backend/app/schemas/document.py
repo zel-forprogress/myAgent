@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +49,9 @@ class DocumentsResponse(BaseModel):
     knowledge_base_name: str
     collection: str
     documents: List[DocumentInfo]
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
 
 
 class DeleteDocumentRequest(BaseModel):

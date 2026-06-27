@@ -16,6 +16,7 @@ from app.schemas import (
     SourceChunk,
 )
 from app.services.chat_store import (
+    count_chat_sessions,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
@@ -84,12 +85,21 @@ def create_session(
 
 @router.get("/sessions", response_model=SessionListResponse)
 def get_sessions(
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SessionListResponse:
     try:
-        sessions = list_chat_sessions(db, current_user)
-        return SessionListResponse(sessions=[serialize_session(item) for item in sessions])
+        total = count_chat_sessions(db, current_user)
+        offset = (max(page, 1) - 1) * max(page_size, 1)
+        sessions = list_chat_sessions(db, current_user, offset=offset, limit=page_size)
+        return SessionListResponse(
+            sessions=[serialize_session(item) for item in sessions],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
     except Exception as exc:
         logger.exception("List sessions failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

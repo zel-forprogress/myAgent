@@ -13,6 +13,7 @@ from app.schemas import (
     IngestResponse,
 )
 from app.services.document_service import (
+    count_document_records,
     delete_document_record,
     list_document_infos,
     sync_document_records,
@@ -167,6 +168,8 @@ async def ingest_upload(
 @router.get("/documents", response_model=DocumentsResponse)
 def documents(
     knowledge_base_id: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> DocumentsResponse:
@@ -174,11 +177,16 @@ def documents(
         _ = current_user
         knowledge_base = resolve_knowledge_base(db, knowledge_base_id)
         sync_document_records(db, knowledge_base)
+        total = count_document_records(db, knowledge_base.id)
+        offset = (max(page, 1) - 1) * max(page_size, 1)
         return DocumentsResponse(
             knowledge_base_id=knowledge_base.id,
             knowledge_base_name=knowledge_base.name,
             collection=knowledge_base.collection_name,
-            documents=list_document_infos(db, knowledge_base.id),
+            documents=list_document_infos(db, knowledge_base.id, offset=offset, limit=page_size),
+            total=total,
+            page=page,
+            page_size=page_size,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

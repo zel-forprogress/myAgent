@@ -105,7 +105,13 @@ export default function AdminPage() {
   const [collection, setCollection] = useState("");
   const [docError, setDocError] = useState("");
   const [docLoading, setDocLoading] = useState(false);
+  const [docPage, setDocPage] = useState(1);
+  const [docTotal, setDocTotal] = useState(0);
+  const DOC_PAGE_SIZE = 15;
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const SESSION_PAGE_SIZE = 15;
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [sessionMessages, setSessionMessages] = useState<MessageResponse[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -216,7 +222,7 @@ export default function AdminPage() {
     if (authReady && selectedKnowledgeBaseId) {
       void loadDocuments(selectedKnowledgeBaseId);
     }
-  }, [authReady, selectedKnowledgeBaseId]);
+  }, [authReady, selectedKnowledgeBaseId, docPage]);
 
   useEffect(() => {
     const query = knowledgeBaseQuery.trim().toLocaleLowerCase();
@@ -353,8 +359,10 @@ export default function AdminPage() {
     return payload as KnowledgeBaseResponse[];
   }
 
-  async function fetchSessions() {
-    const response = await authFetch(`${apiBaseUrl}/sessions`);
+  async function fetchSessions(page = 1, pageSize = SESSION_PAGE_SIZE) {
+    const response = await authFetch(
+      `${apiBaseUrl}/sessions?page=${page}&page_size=${pageSize}`,
+    );
     const payload = (await response.json()) as
       | SessionListResponse
       | { detail?: string };
@@ -367,7 +375,9 @@ export default function AdminPage() {
       );
     }
 
-    return (payload as SessionListResponse).sessions;
+    const data = payload as SessionListResponse;
+    setSessionTotal(data.total || 0);
+    return data.sessions;
   }
 
   async function loadDocuments(knowledgeBaseId: string) {
@@ -376,7 +386,7 @@ export default function AdminPage() {
 
     try {
       const response = await authFetch(
-        `${apiBaseUrl}/documents?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`,
+        `${apiBaseUrl}/documents?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}&page=${docPage}&page_size=${DOC_PAGE_SIZE}`,
       );
       const payload = (await response.json()) as
         | DocumentsResponse
@@ -393,6 +403,7 @@ export default function AdminPage() {
       const successPayload = payload as DocumentsResponse;
       setCollection(successPayload.collection);
       setDocuments(successPayload.documents);
+      setDocTotal(successPayload.total || 0);
     } catch (error) {
       if (error instanceof AuthError) {
         handleAuthAwareError(error, "获取文档列表失败。");
@@ -448,7 +459,7 @@ export default function AdminPage() {
     setSessionLoading(true);
     setSessionNotice(null);
     try {
-      const nextSessions = await fetchSessions();
+      const nextSessions = await fetchSessions(sessionPage, SESSION_PAGE_SIZE);
       setSessions(nextSessions);
       if (nextSessions.length > 0) {
         const nextId =
@@ -1140,6 +1151,13 @@ export default function AdminPage() {
                 {!visibleDocuments.length ? (
                   <p className={styles.emptyState}>当前知识库下还没有文档，可以先上传一个文件。</p>
                 ) : null}
+                <Pagination
+                  currentPage={docPage}
+                  pageSize={DOC_PAGE_SIZE}
+                  totalItems={docTotal}
+                  itemLabel="个文档"
+                  onPageChange={setDocPage}
+                />
                 {deleteNotice ? <NoticeBox notice={deleteNotice} /> : null}
               </section>
             ) : (
@@ -1417,6 +1435,13 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              <Pagination
+                currentPage={sessionPage}
+                pageSize={SESSION_PAGE_SIZE}
+                totalItems={sessionTotal}
+                itemLabel="个会话"
+                onPageChange={setSessionPage}
+              />
               {sessionNotice ? <NoticeBox notice={sessionNotice} /> : null}
             </section>
           ) : null}
