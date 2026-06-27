@@ -124,6 +124,9 @@ export default function AdminPage() {
   const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [deletingSource, setDeletingSource] = useState("");
   const [newKnowledgeBaseName, setNewKnowledgeBaseName] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [newEmbeddingModel, setNewEmbeddingModel] = useState("");
+  const [createKnowledgeBaseOpen, setCreateKnowledgeBaseOpen] = useState(false);
   const [knowledgeBaseNotice, setKnowledgeBaseNotice] = useState<Notice | null>(null);
   const [creatingKnowledgeBase, setCreatingKnowledgeBase] = useState(false);
   const [deletingKnowledgeBaseId, setDeletingKnowledgeBaseId] = useState("");
@@ -516,7 +519,11 @@ export default function AdminPage() {
       const response = await authFetch(`${apiBaseUrl}/knowledge-bases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({
+          name: trimmedName,
+          collection_name: newCollectionName.trim() || undefined,
+          embedding_model: newEmbeddingModel.trim() || undefined,
+        }),
       });
       const payload = (await response.json()) as
         | KnowledgeBaseResponse
@@ -533,6 +540,9 @@ export default function AdminPage() {
       const created = payload as KnowledgeBaseResponse;
       await reloadKnowledgeBases(created.id);
       setNewKnowledgeBaseName("");
+      setNewCollectionName("");
+      setNewEmbeddingModel("");
+      setCreateKnowledgeBaseOpen(false);
       setKnowledgeBaseNotice({
         type: "success",
         text: `知识库“${created.name}”已创建。`,
@@ -985,6 +995,19 @@ export default function AdminPage() {
               </p>
             </div>
             <div className={styles.contentHeaderActions}>
+              {activeView === "knowledge-bases" && !knowledgeBaseDetailOpen ? (
+                <button
+                  className={styles.primaryButton}
+                  onClick={() => {
+                    setKnowledgeBaseNotice(null);
+                    setNewKnowledgeBaseName("");
+                    setCreateKnowledgeBaseOpen(true);
+                  }}
+                  type="button"
+                >
+                  + 新建知识库
+                </button>
+              ) : null}
               {focusedKnowledgeBaseId && !knowledgeBaseDetailOpen ? (
                 <button
                   className={styles.backButton}
@@ -1192,28 +1215,13 @@ export default function AdminPage() {
 
             <section className={styles.card}>
               <div className={styles.cardHeader}>
-                <h3 className={styles.cardTitle}>知识库管理</h3>
+                <div>
+                  <h3 className={styles.cardTitle}>知识库管理</h3>
+                  <p className={styles.cardSubtitle}>
+                    点击知识库名称进入文档上传与文档管理页面。
+                  </p>
+                </div>
               </div>
-
-              <form className={styles.createToolbar} onSubmit={handleCreateKnowledgeBase}>
-                <label className={styles.label} htmlFor="knowledge-base-name">
-                  新知识库名称
-                </label>
-                <input
-                  id="knowledge-base-name"
-                  className={styles.input}
-                  value={newKnowledgeBaseName}
-                  onChange={(event) => setNewKnowledgeBaseName(event.target.value)}
-                  placeholder="例如：产品手册库、技术方案库"
-                />
-                <button
-                  className={styles.primaryButton}
-                  disabled={creatingKnowledgeBase}
-                  type="submit"
-                >
-                  {creatingKnowledgeBase ? "创建中..." : "创建知识库"}
-                </button>
-              </form>
 
               <p className={styles.helperText}>
                 删除规则：只要该知识库下还有文档或会话，就暂时不能删除。
@@ -1279,7 +1287,9 @@ export default function AdminPage() {
                 onPageChange={setKnowledgeBasePage}
               />
 
-              {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
+              {!createKnowledgeBaseOpen && knowledgeBaseNotice ? (
+                <NoticeBox notice={knowledgeBaseNotice} />
+              ) : null}
             </section>
             </>
             )
@@ -1459,6 +1469,97 @@ export default function AdminPage() {
           ) : null}
         </section>
       </section>
+      {createKnowledgeBaseOpen ? (
+        <div className={styles.modalOverlay} role="presentation">
+          <div
+            aria-labelledby="create-knowledge-base-title"
+            aria-modal="true"
+            className={styles.modal}
+            role="dialog"
+          >
+            <div className={styles.modalHeader}>
+              <div>
+                <h3 className={styles.modalTitle} id="create-knowledge-base-title">
+                  创建知识库
+                </h3>
+                <p className={styles.modalSubtitle}>
+                  创建一个新的知识库，用于存储、向量化和检索文档。
+                </p>
+              </div>
+              <button
+                aria-label="关闭创建知识库弹窗"
+                className={styles.modalCloseButton}
+                onClick={() => {
+                  setCreateKnowledgeBaseOpen(false);
+                  setKnowledgeBaseNotice(null);
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+
+            <form className={styles.modalForm} onSubmit={handleCreateKnowledgeBase}>
+              <label className={styles.label} htmlFor="knowledge-base-name">
+                知识库名称
+              </label>
+              <input
+                autoFocus
+                id="knowledge-base-name"
+                className={styles.input}
+                value={newKnowledgeBaseName}
+                onChange={(event) => setNewKnowledgeBaseName(event.target.value)}
+                placeholder="例如：产品文档库"
+              />
+              <label className={styles.label} htmlFor="kb-collection-name">
+                Collection 名称（可选）
+              </label>
+              <input
+                id="kb-collection-name"
+                className={styles.input}
+                value={newCollectionName}
+                onChange={(event) => setNewCollectionName(event.target.value)}
+                placeholder="留空则自动生成"
+              />
+
+              <label className={styles.label} htmlFor="kb-embedding-model">
+                Embedding 模型（可选）
+              </label>
+              <input
+                id="kb-embedding-model"
+                className={styles.input}
+                value={newEmbeddingModel}
+                onChange={(event) => setNewEmbeddingModel(event.target.value)}
+                placeholder="留空则使用系统默认"
+              />
+
+              <p className={styles.helperText}>
+                系统会自动生成 slug 和 MinIO bucket。
+              </p>
+              {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.backButton}
+                  onClick={() => {
+                    setCreateKnowledgeBaseOpen(false);
+                    setKnowledgeBaseNotice(null);
+                  }}
+                  type="button"
+                >
+                  取消
+                </button>
+                <button
+                  className={styles.primaryButton}
+                  disabled={creatingKnowledgeBase}
+                  type="submit"
+                >
+                  {creatingKnowledgeBase ? "创建中..." : "创建"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

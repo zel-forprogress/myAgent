@@ -45,7 +45,12 @@ def get_knowledge_base_by_name(db: Session, name: str) -> KnowledgeBase | None:
     return db.query(KnowledgeBase).filter(KnowledgeBase.name == name).first()
 
 
-def create_knowledge_base(db: Session, name: str) -> KnowledgeBase:
+def create_knowledge_base(
+    db: Session,
+    name: str,
+    collection_name: str | None = None,
+    embedding_model: str | None = None,
+) -> KnowledgeBase:
     trimmed_name = name.strip()
     if not trimmed_name:
         raise ValueError("Knowledge base name is required.")
@@ -61,10 +66,14 @@ def create_knowledge_base(db: Session, name: str) -> KnowledgeBase:
         index += 1
         slug = f"{base_slug}-{index}"
 
+    resolved_collection = (collection_name or "").strip() or build_collection_name(slug)
+    resolved_embedding = (embedding_model or "").strip() or settings.embedding_model
+
     knowledge_base = KnowledgeBase(
         name=trimmed_name,
         slug=slug,
-        collection_name=build_collection_name(slug),
+        collection_name=resolved_collection,
+        embedding_model=resolved_embedding,
         is_default=False,
     )
     db.add(knowledge_base)

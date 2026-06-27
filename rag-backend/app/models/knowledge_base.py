@@ -18,6 +18,7 @@ class KnowledgeBase(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     collection_name: Mapped[str] = mapped_column(String(120), unique=True)
+    embedding_model: Mapped[str] = mapped_column(String(200), nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

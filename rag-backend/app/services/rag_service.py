@@ -39,9 +39,9 @@ def is_valid_collection_name(collection_name: str) -> bool:
     return bool(collection_name) and VALID_COLLECTION_NAME_RE.fullmatch(collection_name) is not None
 
 
-def get_embeddings() -> OpenAIEmbeddings:
+def get_embeddings(model: str | None = None) -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
-        model=settings.embedding_model,
+        model=model or settings.embedding_model,
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
         check_embedding_ctx_length=False,
@@ -351,14 +351,14 @@ def load_document_file(path: str) -> List[Document]:
     ]
 
 
-def ingest_document(collection_name: str, path: str) -> tuple[int, int]:
+def ingest_document(collection_name: str, path: str, embedding_model: str | None = None) -> tuple[int, int]:
     documents = load_document_file(path)
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=120)
     chunks = splitter.split_documents(documents)
     if not chunks:
         return 0, 0
 
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(embedding_model)
     first_vector = embeddings.embed_query(chunks[0].page_content)
 
     client = get_milvus_client()
@@ -399,8 +399,9 @@ def retrieve_sources(
     collection_name: str,
     question: str,
     top_k: int = 4,
+    embedding_model: str | None = None,
 ) -> List[SourceChunk]:
-    query_vector = get_embeddings().embed_query(question)
+    query_vector = get_embeddings(embedding_model).embed_query(question)
     client = get_milvus_client()
     ensure_collection(client, collection_name, vector_dimension=len(query_vector))
 
@@ -426,6 +427,7 @@ def retrieve_sources_multi(
     collection_names: list[str],
     question: str,
     top_k: int = 4,
+    embedding_model: str | None = None,
 ) -> List[SourceChunk]:
     normalized_collection_names: list[str] = []
     seen_collection_names: set[str] = set()
@@ -445,6 +447,7 @@ def retrieve_sources_multi(
                 collection_name=collection_name,
                 question=question,
                 top_k=top_k,
+                embedding_model=embedding_model,
             )
         )
 

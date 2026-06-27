@@ -26,6 +26,7 @@ def serialize_knowledge_base(knowledge_base) -> KnowledgeBaseResponse:
         name=knowledge_base.name,
         slug=knowledge_base.slug,
         collection_name=knowledge_base.collection_name,
+        embedding_model=knowledge_base.embedding_model,
         is_default=knowledge_base.is_default,
         created_at=knowledge_base.created_at.isoformat(),
     )
@@ -53,7 +54,12 @@ def post_knowledge_base(
 ) -> KnowledgeBaseResponse:
     try:
         _ = current_user
-        knowledge_base = create_knowledge_base(db, request.name)
+        knowledge_base = create_knowledge_base(
+            db,
+            request.name,
+            collection_name=request.collection_name,
+            embedding_model=request.embedding_model,
+        )
         return serialize_knowledge_base(knowledge_base)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

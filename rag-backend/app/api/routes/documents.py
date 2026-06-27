@@ -50,7 +50,10 @@ def ingest(
         _ = current_user
         knowledge_base = resolve_knowledge_base(db, request.knowledge_base_id)
         normalized_source = normalize_source(request.path)
-        chunks, skipped = ingest_document(knowledge_base.collection_name, normalized_source)
+        chunks, skipped = ingest_document(
+            knowledge_base.collection_name, normalized_source,
+            embedding_model=knowledge_base.embedding_model,
+        )
         character_count, status = get_document_character_count(normalized_source)
         storage_metadata = get_stored_file_metadata(normalized_source)
         upsert_document_record(
@@ -115,7 +118,10 @@ async def ingest_upload(
             content,
             knowledge_base_slug=knowledge_base.slug,
         )
-        chunks, skipped = ingest_document(knowledge_base.collection_name, stored_file.source)
+        chunks, skipped = ingest_document(
+            knowledge_base.collection_name, stored_file.source,
+            embedding_model=knowledge_base.embedding_model,
+        )
         character_count, status = get_document_character_count(stored_file.source)
         upsert_document_record(
             db,

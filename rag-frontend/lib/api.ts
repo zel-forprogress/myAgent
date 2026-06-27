@@ -22,6 +22,7 @@ export type KnowledgeBaseResponse = {
   name: string;
   slug: string;
   collection_name: string;
+  embedding_model?: string | null;
   is_default: boolean;
   created_at: string;
 };
