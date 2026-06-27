@@ -1,65 +1,65 @@
 # myAgent
 
-myAgent is a local RAG Agent demo built around FastAPI, LangGraph, Milvus, PostgreSQL, MinIO, Next.js, and Langfuse. It supports document ingestion, multi-knowledge-base retrieval, chat session persistence, streaming chat responses, and an admin console for knowledge-base management.
+myAgent 是一个本地 RAG Agent 项目，围绕 FastAPI、LangGraph、Milvus、PostgreSQL、MinIO、Next.js 和 Langfuse 构建。项目支持文档入库、多知识库检索、聊天会话持久化、流式回答、Agent 执行链路观测，以及用于知识库管理的后台页面。
 
-## Features
+## 功能特性
 
-- RAG chat with Qwen-compatible OpenAI API calls
-- LangGraph-based Agent workflow
-- Streaming answer output
-- Multi-knowledge-base selection
-- Document upload and parsing for `.txt`, `.md`, `.pdf`, and `.docx`
-- Vector retrieval with Milvus
-- Chat sessions and user data persisted in PostgreSQL
-- Original files stored in MinIO object storage
-- Langfuse tracing for Agent steps, retrieval, and model calls
-- Next.js frontend with chat page, login page, and admin console
-- Basic user roles: admin and normal user
+- 基于 Qwen / DashScope 的 OpenAI-compatible API 调用
+- 基于 LangGraph 的 Agent 工作流
+- 支持流式输出回答
+- 支持多知识库选择与检索
+- 支持 `.txt`、`.md`、`.pdf`、`.docx` 文档上传与解析
+- 使用 Milvus 存储向量并进行语义检索
+- 使用 PostgreSQL 持久化用户、会话和消息数据
+- 使用 MinIO 存储上传的原始文件
+- 使用 Langfuse 观测 Agent 节点、检索结果和模型调用
+- Next.js 前端，包含聊天页、登录页和管理后台
+- 基础用户角色：管理员和普通用户
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
+| 模块 | 技术 |
 | --- | --- |
-| Backend | Python, FastAPI, Uvicorn |
-| Agent workflow | LangGraph |
-| RAG components | LangChain |
-| LLM API | OpenAI-compatible API, DashScope/Qwen |
-| Vector database | Milvus |
-| Relational database | PostgreSQL |
-| Object storage | MinIO |
-| Observability | Langfuse |
-| Frontend | Next.js, React, TypeScript |
-| Deployment dependencies | Docker Compose |
+| 后端 | Python, FastAPI, Uvicorn |
+| Agent 编排 | LangGraph |
+| RAG 组件 | LangChain |
+| 模型调用 | OpenAI-compatible API, DashScope/Qwen |
+| 向量数据库 | Milvus |
+| 关系型数据库 | PostgreSQL |
+| 对象存储 | MinIO |
+| 可观测性 | Langfuse |
+| 前端 | Next.js, React, TypeScript |
+| 本地依赖部署 | Docker Compose |
 
-## Project Structure
+## 项目结构
 
 ```text
 myAgent/
 +-- rag-backend/
 |   +-- app/
-|   |   +-- api/              # FastAPI route layer
-|   |   +-- core/             # config and database initialization
-|   |   +-- models/           # SQLAlchemy models
-|   |   +-- schemas/          # request/response schemas
-|   |   +-- services/         # RAG, graph, storage, auth, chat logic
-|   +-- data/docs/            # local development documents
-|   +-- docs/                 # backend notes
-|   +-- docker-compose.yml    # PostgreSQL, Milvus, MinIO, etcd
+|   |   +-- api/              # FastAPI 接口层
+|   |   +-- core/             # 配置与数据库初始化
+|   |   +-- models/           # SQLAlchemy 数据模型
+|   |   +-- schemas/          # 请求/响应模型
+|   |   +-- services/         # RAG、Graph、存储、认证、会话逻辑
+|   +-- data/docs/            # 本地开发测试文档
+|   +-- docs/                 # 后端相关笔记
+|   +-- docker-compose.yml    # PostgreSQL、Milvus、MinIO、etcd
 |   +-- requirements.txt
 +-- rag-frontend/
-|   +-- app/                  # Next.js pages
-|   +-- components/           # shared UI components
-|   +-- lib/                  # frontend API/auth helpers
+|   +-- app/                  # Next.js 页面
+|   +-- components/           # 公共组件
+|   +-- lib/                  # 前端 API / 认证工具
 |   +-- package.json
 +-- docs/
-    +-- STARTUP.md            # detailed startup guide
+    +-- STARTUP.md            # 本地启动说明
 ```
 
-## Quick Start
+## 快速启动
 
-Read [docs/STARTUP.md](docs/STARTUP.md) for the full startup and test flow.
+完整启动流程请看 [docs/STARTUP.md](docs/STARTUP.md)。
 
-Short version:
+后端简版流程：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Then start the frontend:
+前端简版流程：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-frontend
@@ -78,50 +78,59 @@ npm install
 npm run dev
 ```
 
-Open:
+常用访问地址：
 
-- Frontend: http://localhost:3000
-- Backend Swagger: http://127.0.0.1:8000/docs
-- MinIO Console: http://127.0.0.1:9001
+- 前端页面：http://localhost:3000
+- 后端 Swagger：http://127.0.0.1:8000/docs
+- MinIO 控制台：http://127.0.0.1:9001
 
-## Default Accounts
+## 默认账号
 
-The backend seeds two local accounts on startup:
+后端启动时会自动初始化两个本地测试账号：
 
-| Role | Username | Password |
+| 角色 | 用户名 | 密码 |
 | --- | --- | --- |
-| Admin | `admin` | `admin123456` |
-| User | `demo` | `demo123456` |
+| 管理员 | `admin` | `admin123456` |
+| 普通用户 | `demo` | `demo123456` |
 
-Change these values in `rag-backend/.env` before using this outside local development.
+如果不是本地开发环境，请在 `rag-backend/.env` 中修改这些默认账号和密码。
 
-## Common Development Commands
+## 常用开发命令
 
-Backend:
+启动后端依赖服务：
 
 ```powershell
 cd rag-backend
 docker compose up -d
+```
+
+启动后端服务：
+
+```powershell
+cd rag-backend
 uvicorn app.main:app --reload
 ```
 
-Frontend:
+启动前端服务：
 
 ```powershell
 cd rag-frontend
 npm run dev
 ```
 
-Stop Docker services:
+停止 Docker 服务：
 
 ```powershell
 cd rag-backend
 docker compose down
 ```
 
-## Notes
+## 注意事项
 
-- Do not commit `.env` or `.env.local`; use the example files as templates.
-- Uploaded files are stored in MinIO. Parsed chunks are stored in Milvus.
-- Chat sessions and metadata are stored in PostgreSQL.
-- If port `3000` is occupied, Next.js may automatically switch to another port such as `3001`.
+- 不要提交 `.env` 或 `.env.local`，它们里面会包含真实密钥。
+- 后端环境变量模板是 `rag-backend/.env.example`。
+- 前端环境变量模板是 `rag-frontend/.env.local.example`。
+- 上传的原始文件会进入 MinIO。
+- 解析后的文本 chunk 会进入 Milvus。
+- 用户、会话、消息等结构化数据会进入 PostgreSQL。
+- 如果 `3000` 端口被占用，Next.js 可能会自动切换到 `3001` 等其他端口。

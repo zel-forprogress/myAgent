@@ -1,40 +1,40 @@
-# Startup Guide
+# 本地启动说明
 
-This guide explains how to run myAgent locally from a clean checkout.
+这份文档用于说明如何从一个干净的本地仓库启动 myAgent。
 
-## 1. Prerequisites
+## 1. 前置环境
 
-Install these tools first:
+请先安装：
 
 - Docker Desktop
-- Python 3.11 or newer
-- Conda or another Python virtual environment tool
-- Node.js 20 or newer
+- Python 3.11 或更高版本
+- Conda 或其他 Python 虚拟环境工具
+- Node.js 20 或更高版本
 - npm
 
-Recommended local services are started by Docker Compose:
+本项目通过 Docker Compose 启动以下本地依赖服务：
 
 - PostgreSQL
 - etcd
 - MinIO
 - Milvus
 
-## 2. Backend Environment
+## 2. 配置后端环境变量
 
-Create the backend environment file:
+进入后端目录并创建 `.env`：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
 copy .env.example .env
 ```
 
-Edit `rag-backend/.env` and fill in your real DashScope/Qwen API key:
+打开 `rag-backend/.env`，把 `OPENAI_API_KEY` 改成你自己的 DashScope / Qwen API Key：
 
 ```env
 OPENAI_API_KEY=your_dashscope_api_key
 ```
 
-The project uses DashScope through the OpenAI-compatible endpoint:
+当前项目通过 DashScope 的 OpenAI-compatible endpoint 调用模型：
 
 ```env
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -42,75 +42,75 @@ CHAT_MODEL=qwen3.7-plus
 EMBEDDING_MODEL=text-embedding-v4
 ```
 
-If you use a different Qwen chat model, change `CHAT_MODEL`.
+如果你使用其他 Qwen 聊天模型，只需要修改 `CHAT_MODEL`。
 
-## 3. Start Docker Services
+## 3. 启动 Docker 依赖服务
 
-Start PostgreSQL, Milvus, MinIO, and etcd:
+在后端目录执行：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
 docker compose up -d
 ```
 
-Check containers:
+查看容器状态：
 
 ```powershell
 docker compose ps
 ```
 
-Useful service URLs:
+本地服务地址：
 
-- Milvus: `localhost:19530`
-- PostgreSQL: `localhost:5433`
-- MinIO API: `http://127.0.0.1:9000`
-- MinIO Console: `http://127.0.0.1:9001`
+- Milvus：`localhost:19530`
+- PostgreSQL：`localhost:5433`
+- MinIO API：`http://127.0.0.1:9000`
+- MinIO 控制台：`http://127.0.0.1:9001`
 
-MinIO local account:
+MinIO 本地账号：
 
 ```text
 username: minioadmin
 password: minioadmin
 ```
 
-## 4. Install Backend Dependencies
+## 4. 安装后端依赖
 
-Create and activate a Python environment:
+创建并激活 Python 虚拟环境：
 
 ```powershell
 conda create -n rag-agent python=3.11 -y
 conda activate rag-agent
 ```
 
-Install dependencies:
+安装依赖：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
 pip install -r requirements.txt
 ```
 
-## 5. Start Backend
+## 5. 启动后端
 
-Run FastAPI:
+在 `rag-backend` 目录启动 FastAPI：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
 uvicorn app.main:app --reload
 ```
 
-Open Swagger:
+打开 Swagger：
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-Health check:
+健康检查接口：
 
 ```text
 GET http://127.0.0.1:8000/health
 ```
 
-Expected result:
+正常返回：
 
 ```json
 {
@@ -118,72 +118,72 @@ Expected result:
 }
 ```
 
-## 6. Frontend Environment
+## 6. 配置前端环境变量
 
-Create the frontend environment file:
+进入前端目录并创建 `.env.local`：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-frontend
 copy .env.local.example .env.local
 ```
 
-Default frontend API address:
+默认后端地址：
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-## 7. Install and Start Frontend
+## 7. 安装并启动前端
 
-Install frontend dependencies:
+安装前端依赖：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-frontend
 npm install
 ```
 
-Start Next.js:
+启动 Next.js：
 
 ```powershell
 npm run dev
 ```
 
-Open:
+打开前端页面：
 
 ```text
 http://localhost:3000
 ```
 
-If port `3000` is already occupied, Next.js may start on `3001`. Use the URL printed in the terminal.
+如果 `3000` 端口已经被占用，Next.js 可能会自动使用 `3001`。以终端输出的地址为准。
 
-## 8. Login
+## 8. 登录账号
 
-Default accounts:
+默认测试账号：
 
-| Role | Username | Password |
+| 角色 | 用户名 | 密码 |
 | --- | --- | --- |
-| Admin | `admin` | `admin123456` |
-| User | `demo` | `demo123456` |
+| 管理员 | `admin` | `admin123456` |
+| 普通用户 | `demo` | `demo123456` |
 
-Admin users can open the admin console. Normal users can only use the chat page.
+管理员可以进入管理后台。普通用户只能使用聊天页面。
 
-## 9. Basic Test Flow
+## 9. 基础测试流程
 
-1. Open `http://localhost:3000`.
-2. Login as `admin`.
-3. Enter the admin console.
-4. Create a knowledge base.
-5. Open that knowledge base.
-6. Upload a `.txt`, `.md`, `.pdf`, or `.docx` file.
-7. Confirm the file appears in MinIO.
-8. Confirm document chunks appear in the admin document list.
-9. Return to chat.
-10. Ask a question related to the uploaded document.
-11. Check that the answer includes retrieval sources.
+1. 打开 `http://localhost:3000`。
+2. 使用 `admin` 登录。
+3. 进入管理后台。
+4. 创建一个知识库。
+5. 点击知识库名称进入文档管理页面。
+6. 上传 `.txt`、`.md`、`.pdf` 或 `.docx` 文件。
+7. 打开 MinIO，确认原始文件已经写入对应 bucket。
+8. 在管理后台确认文档列表和 chunk 数正常。
+9. 返回聊天首页。
+10. 选择知识库范围，提问一个和上传文档相关的问题。
+11. 检查回答、检索来源、执行步骤是否正常展示。
 
-## 10. Langfuse
+## 10. Langfuse 配置
 
-Langfuse is optional. If these values are empty, the core RAG flow still works.
+Langfuse 是可选配置。如果这些字段为空，核心 RAG 功能仍然可以运行。
 
 ```env
 LANGFUSE_PUBLIC_KEY=
@@ -192,49 +192,49 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com
 LANGFUSE_TIMEOUT=30
 ```
 
-After filling these values, restart the backend and run a chat request. Open the Langfuse tracing page to confirm spans and generations are recorded.
+填写后需要重启后端服务。然后发送一次聊天请求，在 Langfuse 的 Tracing 页面确认是否能看到 trace、span 和 generation。
 
-## 11. Troubleshooting
+## 11. 常见问题
 
-### Docker pull failed
+### Docker 拉取镜像失败
 
-If Docker reports `failed to fetch oauth token` or `EOF`, it is usually a network issue. Retry:
-
-```powershell
-docker compose up -d
-```
-
-### Docker daemon is not running
-
-Start Docker Desktop first, then run:
+如果出现 `failed to fetch oauth token`、`EOF` 等错误，通常是网络问题。可以稍后重试：
 
 ```powershell
 docker compose up -d
 ```
 
-### Backend cannot import `app`
+### Docker daemon 没有启动
 
-Run Uvicorn from `rag-backend`, not the repository root:
+先打开 Docker Desktop，再执行：
+
+```powershell
+docker compose up -d
+```
+
+### 后端报 `No module named 'app'`
+
+通常是启动目录不对。需要在 `rag-backend` 目录执行：
 
 ```powershell
 cd D:\code\git_localRepository\myAgent\rag-backend
 uvicorn app.main:app --reload
 ```
 
-### Frontend reports connection error
+### 前端显示 Connection error
 
-Confirm the backend is running:
+先确认后端是否正常运行：
 
 ```text
 http://127.0.0.1:8000/health
 ```
 
-Also check `rag-frontend/.env.local`:
+再检查 `rag-frontend/.env.local`：
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-### MinIO bucket looks empty
+### MinIO 中看不到刚上传的文件
 
-New uploads are stored in the bucket for the selected knowledge base. Milvus uses MinIO internally too, so you may see a bucket that belongs to Milvus and another bucket used by myAgent documents.
+每个知识库会对应自己的对象存储 bucket。请确认你打开的是当前知识库对应的 bucket。Milvus 自己也会依赖 MinIO，因此 MinIO 里可能同时存在 Milvus 使用的 bucket 和 myAgent 上传文档使用的 bucket。
