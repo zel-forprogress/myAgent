@@ -47,7 +47,8 @@ const KNOWLEDGE_BASE_PAGE_SIZE = 6;
 type AdminView =
   | "overview"
   | "knowledge-bases"
-  | "sessions";
+  | "sessions"
+  | "users";
 
 type MenuItem = {
   key: AdminView;
@@ -74,6 +75,12 @@ const adminMenus: MenuItem[] = [
     label: "聊天会话",
     description: "查看所有用户会话和绑定知识库",
     icon: <MenuIcon variant="chat" />,
+  },
+  {
+    key: "users",
+    label: "用户管理",
+    description: "创建、查看、删除用户",
+    icon: <MenuIcon variant="people" />,
   },
 ];
 
@@ -113,6 +120,17 @@ export default function AdminPage() {
   const [knowledgeBaseNotice, setKnowledgeBaseNotice] = useState<Notice | null>(null);
   const [creatingKnowledgeBase, setCreatingKnowledgeBase] = useState(false);
   const [deletingKnowledgeBaseId, setDeletingKnowledgeBaseId] = useState("");
+
+  // --- User management ---
+  type UserListItem = { id: string; username: string; role: string; created_at: string };
+  const [users, setUsers] = useState<UserListItem[]>([]);
+  const [userTotal, setUserTotal] = useState(0);
+  const [userNotice, setUserNotice] = useState<Notice | null>(null);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"user" | "admin">("user");
 
   const selectedKnowledgeBase = useMemo(
     () =>
@@ -286,6 +304,7 @@ export default function AdminPage() {
       }
 
       await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList)]);
+      try { await fetchUsers(); } catch { /* users tab will load on demand */ }
       setAuthReady(true);
     } catch (error) {
       handleAuthAwareError(error, "初始化后台失败。");
@@ -706,6 +725,70 @@ export default function AdminPage() {
       });
     } finally {
       setDeletingSessionId("");
+    }
+  }
+
+  async function fetchUsers() {
+    const response = await authFetch(`${apiBaseUrl}/admin/users`);
+    const payload = (await response.json()) as { users: UserListItem[]; total: number } | { detail?: string };
+    if (!response.ok) {
+      throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取用户列表失败。");
+    }
+    const data = payload as { users: UserListItem[]; total: number };
+    setUsers(data.users);
+    setUserTotal(data.total);
+  }
+
+  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedName = newUsername.trim();
+    if (!trimmedName || !newPassword) {
+      setUserNotice({ type: "error", text: "请填写用户名和密码。" });
+      return;
+    }
+    setCreatingUser(true);
+    setUserNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: trimmedName, password: newPassword, role: newRole }),
+      });
+      const payload = (await response.json()) as UserListItem | { detail?: string };
+      if (!response.ok) {
+        throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "创建用户失败。");
+      }
+      const created = payload as UserListItem;
+      setUserNotice({ type: "success", text: `用户 ${created.username} 已创建。` });
+      setNewUsername("");
+      setNewPassword("");
+      setNewRole("user");
+      await fetchUsers();
+    } catch (error) {
+      if (error instanceof AuthError) { handleAuthAwareError(error, "创建用户失败。"); return; }
+      setUserNotice({ type: "error", text: error instanceof Error ? error.message : "创建用户失败。" });
+    } finally {
+      setCreatingUser(false);
+    }
+  }
+
+  async function handleDeleteUser(userId: string, username: string) {
+    if (!window.confirm(`确定要删除用户 ${username} 吗？`)) return;
+    setDeletingUserId(userId);
+    setUserNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/users/${userId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = (await response.json()) as { detail?: string };
+        throw new Error(payload.detail || "删除用户失败。");
+      }
+      setUserNotice({ type: "success", text: `用户 ${username} 已删除。` });
+      await fetchUsers();
+    } catch (error) {
+      if (error instanceof AuthError) { handleAuthAwareError(error, "删除用户失败。"); return; }
+      setUserNotice({ type: "error", text: error instanceof Error ? error.message : "删除用户失败。" });
+    } finally {
+      setDeletingUserId("");
     }
   }
 
@@ -1179,6 +1262,73 @@ export default function AdminPage() {
             )
           ) : null}
 
+          {activeView === "users" ? (
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <h3 className={styles.cardTitle}>用户管理</h3>
+                <p className={styles.cardSubtitle}>管理可登录后台的用户，包括管理员和普通用户</p>
+              </div>
+
+              <form className={styles.createToolbar} onSubmit={handleCreateUser}>
+                <label className={styles.label} htmlFor="new-username">用户名</label>
+                <input id="new-username" className={styles.input} value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="2-100 个字符" />
+                <label className={styles.label} htmlFor="new-password">密码</label>
+                <input id="new-password" className={styles.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少 6 个字符" />
+                <label className={styles.label} htmlFor="new-role">角色</label>
+                <select id="new-role" className={styles.select} value={newRole} onChange={(e) => setNewRole(e.target.value as "user" | "admin")}>
+                  <option value="user">普通用户 (user)</option>
+                  <option value="admin">管理员 (admin)</option>
+                </select>
+                <button className={styles.primaryButton} disabled={creatingUser} type="submit">
+                  {creatingUser ? "创建中..." : "创建用户"}
+                </button>
+              </form>
+
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>用户名</th>
+                      <th>角色</th>
+                      <th>创建时间</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id}>
+                        <td>{user.username}</td>
+                        <td>
+                          <span className={styles.statusBadge}>
+                            {user.role === "admin" ? "管理员" : "普通用户"}
+                          </span>
+                        </td>
+                        <td>{new Date(user.created_at).toLocaleString("zh-CN")}</td>
+                        <td>
+                          <button
+                            className={styles.deleteButton}
+                            disabled={deletingUserId === user.id}
+                            onClick={() => void handleDeleteUser(user.id, user.username)}
+                            type="button"
+                          >
+                            {deletingUserId === user.id ? "删除中..." : "删除"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!users.length ? (
+                      <tr>
+                        <td colSpan={4} className={styles.emptyTableCell}>暂无用户数据</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+              <p className={styles.helperText}>共 {userTotal} 个用户</p>
+              {userNotice ? <NoticeBox notice={userNotice} /> : null}
+            </section>
+          ) : null}
+
           {activeView === "sessions" ? (
             <section className={styles.card}>
               <div className={styles.cardHeader}>
@@ -1285,7 +1435,7 @@ function SidebarStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-type MenuIconVariant = "grid" | "layers" | "upload" | "path" | "doc" | "chat";
+type MenuIconVariant = "grid" | "layers" | "upload" | "path" | "doc" | "chat" | "people";
 
 function OverviewMetric({
   icon,
@@ -1373,6 +1523,17 @@ function MenuIcon({
         <path d="M14 3v5h5" />
         <path d="M10 13h7" />
         <path d="M10 17h7" />
+      </svg>
+    );
+  }
+
+  if (variant === "people") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+        <circle cx="19" cy="7" r="2.5" />
+        <path d="M15 18c0-2.2 1.6-4.1 3.6-4.8" />
       </svg>
     );
   }

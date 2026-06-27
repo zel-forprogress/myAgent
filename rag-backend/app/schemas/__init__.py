@@ -1,4 +1,13 @@
-from app.schemas.auth import LoginRequest, LoginResponse, UserResponse
+from app.schemas.auth import (
+    AdminUserCreateRequest,
+    ChangePasswordRequest,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    UserListItem,
+    UserListResponse,
+    UserResponse,
+)
 from app.schemas.chat import ChatRequest, ChatResponse, MessageResponse, SourceChunk
 from app.schemas.document import (
     DeleteDocumentRequest,
@@ -23,6 +32,8 @@ from app.schemas.session import (
 )
 
 __all__ = [
+    "AdminUserCreateRequest",
+    "ChangePasswordRequest",
     "ChatRequest",
     "ChatResponse",
     "DeleteDocumentRequest",
@@ -38,11 +49,14 @@ __all__ = [
     "LoginRequest",
     "LoginResponse",
     "MessageResponse",
+    "RegisterRequest",
     "SessionCreateRequest",
     "SessionListResponse",
     "SessionMessagesResponse",
     "SessionResponse",
     "SessionUpdateRequest",
     "SourceChunk",
+    "UserListItem",
+    "UserListResponse",
     "UserResponse",
 ]
