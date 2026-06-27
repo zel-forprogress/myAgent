@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     seed_user_username: str = "demo"
     seed_user_password: str = "demo123456"
 
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     langfuse_secret_key: Optional[str] = None
     langfuse_public_key: Optional[str] = None
     langfuse_base_url: Optional[str] = None
