@@ -124,6 +124,7 @@ export default function AdminPage() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [deletingSource, setDeletingSource] = useState("");
+  const [chunkingSource, setChunkingSource] = useState("");
   const [newKnowledgeBaseName, setNewKnowledgeBaseName] = useState("");
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newEmbeddingModel, setNewEmbeddingModel] = useState("");
@@ -702,7 +703,7 @@ export default function AdminPage() {
 
   async function handleChunkDocument(source: string) {
     if (!selectedKnowledgeBase) return;
-    setDeletingSource(source);
+    setChunkingSource(source);
     setDeleteNotice(null);
     try {
       const response = await authFetch(`${apiBaseUrl}/documents/chunk`, {
@@ -720,7 +721,7 @@ export default function AdminPage() {
       if (error instanceof AuthError) { handleAuthAwareError(error, "分块失败。"); return; }
       setDeleteNotice({ type: "error", text: error instanceof Error ? error.message : "分块失败。" });
     } finally {
-      setDeletingSource("");
+      setChunkingSource("");
     }
   }
 
@@ -1226,8 +1227,8 @@ export default function AdminPage() {
                               : "-"}
                           </td>
                           <td>
-                            <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={deletingSource === document.source} onClick={() => void handleChunkDocument(document.source)} type="button">
-                              {deletingSource === document.source ? "分块中..." : "分块"}
+                            <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={chunkingSource === document.source} onClick={() => void handleChunkDocument(document.source)} type="button">
+                              {chunkingSource === document.source ? "分块中..." : "分块"}
                             </button>
                             <button
                               className={styles.deleteButton}
