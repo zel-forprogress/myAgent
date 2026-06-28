@@ -112,12 +112,15 @@ def sync_document_records(db: Session, knowledge_base: KnowledgeBase) -> list[Kn
 
     stale_records = (
         db.query(KnowledgeBaseDocument)
-        .filter(KnowledgeBaseDocument.knowledge_base_id == knowledge_base.id)
+        .filter(
+            KnowledgeBaseDocument.knowledge_base_id == knowledge_base.id,
+            KnowledgeBaseDocument.status != "pending",
+        )
         .all()
     )
     stale_deleted = False
     for record in stale_records:
-        if record.source not in seen_sources:
+        if record.source not in seen_sources and record.status != "pending":
             db.delete(record)
             stale_deleted = True
 
