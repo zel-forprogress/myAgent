@@ -681,7 +681,7 @@ export default function AdminPage() {
       const successPayload = payload as IngestResponse;
       setUploadNotice({
         type: "success",
-        text: `${successPayload.knowledge_base_name} 已入库文档 ${successPayload.filename}（${successPayload.file_type}），解析 ${successPayload.character_count} 个字符，新增 ${successPayload.chunks} 个 chunk，跳过 ${successPayload.skipped} 个重复 chunk。`,
+        text: `${successPayload.knowledge_base_name} 已上传文档 ${successPayload.filename}（${successPayload.file_type}），可点击分块按钮进行处理。`,
       });
       setSelectedFile(null);
       await loadDocuments(selectedKnowledgeBase.id);
