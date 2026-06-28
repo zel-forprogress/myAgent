@@ -29,6 +29,8 @@ class StoredFileMetadata:
 
 
 def normalize_source(path: str) -> str:
+    if path.startswith("s3://"):
+        return path
     return Path(path).as_posix()
 
 
