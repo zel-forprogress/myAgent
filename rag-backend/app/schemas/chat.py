@@ -17,6 +17,9 @@ class SourceChunk(BaseModel):
     content: str
     source: Optional[str] = None
     score: Optional[float] = None
+    vector_score: Optional[float] = None
+    keyword_score: Optional[float] = None
+    rerank_score: Optional[float] = None
     retrieval_type: Literal["vector", "keyword", "hybrid"] = "vector"
 
 

@@ -2,6 +2,9 @@ export type SourceChunk = {
   content: string;
   source?: string | null;
   score?: number | null;
+  vector_score?: number | null;
+  keyword_score?: number | null;
+  rerank_score?: number | null;
   retrieval_type?: "vector" | "keyword" | "hybrid" | string | null;
 };
 
