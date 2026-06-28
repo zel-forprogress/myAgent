@@ -1144,6 +1144,9 @@ export default function AdminPage() {
                   返回知识库
                 </button>
               ) : null}
+              {activeView === "overview" ? (
+                <button className={styles.refreshButton} onClick={() => { void loadHealth(); void loadDocumentCounts(knowledgeBases); void reloadSessions(); void fetchStats(); }} type="button">刷新统计</button>
+              ) : null}
             </div>
           </div>
 
@@ -1163,38 +1166,6 @@ export default function AdminPage() {
                 <OverviewMetric icon="layers" label="Milvus 集合数" value={adminStats ? String(adminStats.milvus.collections) : "-"} />
               </section>
 
-              <div className={styles.overviewActions}>
-                <button className={styles.refreshButton} onClick={() => { void loadHealth(); void loadDocumentCounts(knowledgeBases); void reloadSessions(); void fetchStats(); }} type="button">刷新统计</button>
-              </div>
-
-              {adminStats ? (
-                <section className={styles.card} style={{ marginTop: 24 }}>
-                  <h3 className={styles.cardTitle}>文档状态分布</h3>
-                  <div style={{ display: "flex", gap: 8, margin: "14px 0 8px" }}>
-                    <Bar label="已分块" value={adminStats.documents.indexed} max={adminStats.documents.total || 1} color="#15803d" bg="#eaf8ef" />
-                    <Bar label="待分块" value={adminStats.documents.pending} max={adminStats.documents.total || 1} color="#b45309" bg="#fff7ed" />
-                    <Bar label="失败" value={adminStats.documents.failed} max={adminStats.documents.total || 1} color="#b91c1c" bg="#fff2f2" />
-                  </div>
-                </section>
-              ) : null}
-
-              {adminStats?.kb_breakdown.length ? (
-                <section className={styles.card} style={{ marginTop: 20 }}>
-                  <h3 className={styles.cardTitle}>知识库详情</h3>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead><tr><th>知识库</th><th>Collection</th><th>文档数</th><th>Chunks</th><th>存储大小</th></tr></thead>
-                      <tbody>
-                        {adminStats.kb_breakdown.map((kb) => (
-                          <tr key={kb.collection}>
-                            <td>{kb.name}</td><td>{kb.collection}</td><td>{kb.documents}</td><td>{kb.chunks}</td><td>{(kb.size / 1024).toFixed(1)} KB</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              ) : null}
               {docError ? <NoticeBox notice={{ type: "error", text: docError }} /> : null}
             </>
           ) : null}

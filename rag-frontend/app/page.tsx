@@ -566,7 +566,7 @@ export default function HomePage() {
                   <article className={styles.sourceCard} key={`${source.source}-${index}`} style={{ marginBottom: 8 }}>
                     <div className={styles.sourceMeta}>
                       <span className={styles.sourcePath}>{source.source || "未知来源"}</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span className={styles.sourceMetaActions}>
                         <RetrievalTypeBadge type={source.retrieval_type} />
                         <span className={styles.sourceScore}>{typeof source.score === "number" ? source.score.toFixed(3) : "n/a"}</span>
                       </span>
@@ -592,26 +592,17 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-const RETRIEVAL_TYPE_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  vector: { label: "向量", color: "#15803d", bg: "#eaf8ef" },
-  keyword: { label: "关键词", color: "#b45309", bg: "#fff7ed" },
-  hybrid: { label: "混合", color: "#2563eb", bg: "#dbeafe" },
+const RETRIEVAL_TYPE_MAP: Record<string, { label: string; className: string }> = {
+  vector: { label: "向量", className: styles.retrievalTypeVector },
+  keyword: { label: "关键词", className: styles.retrievalTypeKeyword },
+  hybrid: { label: "混合", className: styles.retrievalTypeHybrid },
 };
 
 function RetrievalTypeBadge({ type }: { type?: string | null }) {
   const meta = RETRIEVAL_TYPE_MAP[type || ""];
   if (!meta) return null;
   return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "1px 6px",
-      borderRadius: 4,
-      fontSize: 10,
-      fontWeight: 700,
-      color: meta.color,
-      background: meta.bg,
-    }}>
+    <span className={`${styles.retrievalTypeBadge} ${meta.className}`}>
       {meta.label}
     </span>
   );
