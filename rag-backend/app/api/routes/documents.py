@@ -202,7 +202,7 @@ def chunk_document(
         )
         character_count, _ = get_document_character_count(normalized_source)
         storage_metadata = get_stored_file_metadata(normalized_source)
-        chunk_status = "success" if chunks > 0 else "failed"
+        chunk_status = "success" if chunks > 0 or skipped > 0 else "failed"
         upsert_document_record(
             db,
             knowledge_base=knowledge_base,
