@@ -204,7 +204,12 @@
   color: var(--helper);
   font-size: 14px;
   line-height: 1;
+}
+
+.sessionMenuButton:focus,
+.sessionMenuButton:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 
 .sessionMenuButton:hover,
