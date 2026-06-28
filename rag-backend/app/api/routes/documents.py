@@ -26,6 +26,7 @@ from app.services.rag_service import (
     extract_filename,
     get_document_character_count,
     get_document_uploaded_at,
+    get_milvus_client,
     ingest_document,
     normalize_source,
 )
@@ -246,6 +247,40 @@ def chunk_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Chunk document failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/documents/chunks")
+def document_chunks(
+    knowledge_base_id: str,
+    source: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    try:
+        _ = current_user
+        knowledge_base = resolve_knowledge_base(db, knowledge_base_id)
+        client = get_milvus_client()
+        if not client.has_collection(knowledge_base.collection_name):
+            return {"chunks": [], "source": source}
+        client.load_collection(knowledge_base.collection_name)
+        escaped = source.replace("\\", "\\\\").replace('"', '\\"')
+        rows = client.query(
+            collection_name=knowledge_base.collection_name,
+            filter=f'source == "{escaped}"',
+            output_fields=["text", "source"],
+            limit=10000,
+        )
+        chunks = [
+            {
+                "id": row.get("id"),
+                "text": row.get("text", ""),
+                "source": row.get("source", ""),
+            }
+            for row in rows
+        ]
+        return {"chunks": chunks, "source": source, "total": len(chunks)}
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

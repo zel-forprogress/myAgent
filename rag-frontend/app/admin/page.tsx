@@ -125,6 +125,12 @@ export default function AdminPage() {
   const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [deletingSource, setDeletingSource] = useState("");
   const [chunkingSource, setChunkingSource] = useState("");
+  const [chunkDetailOpen, setChunkDetailOpen] = useState(false);
+  const [chunkDetailSource, setChunkDetailSource] = useState("");
+  const [chunkDetailDoc, setChunkDetailDoc] = useState("");
+  type ChunkItem = { id: number; text: string };
+  const [chunkItems, setChunkItems] = useState<ChunkItem[]>([]);
+  const [chunkLoading, setChunkLoading] = useState(false);
   const [newKnowledgeBaseName, setNewKnowledgeBaseName] = useState("");
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newEmbeddingModel, setNewEmbeddingModel] = useState("");
@@ -701,6 +707,26 @@ export default function AdminPage() {
     }
   }
 
+  async function viewChunks(source: string, filename: string) {
+    if (!selectedKnowledgeBase) return;
+    setChunkDetailSource(source);
+    setChunkDetailDoc(filename);
+    setChunkDetailOpen(true);
+    setChunkLoading(true);
+    try {
+      const response = await authFetch(
+        `${apiBaseUrl}/documents/chunks?knowledge_base_id=${encodeURIComponent(selectedKnowledgeBase.id)}&source=${encodeURIComponent(source)}`,
+      );
+      const payload = (await response.json()) as { chunks: ChunkItem[]; total: number } | { detail?: string };
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取分块失败。");
+      setChunkItems((payload as { chunks: ChunkItem[] }).chunks);
+    } catch {
+      setChunkItems([]);
+    } finally {
+      setChunkLoading(false);
+    }
+  }
+
   async function handleChunkDocument(source: string) {
     if (!selectedKnowledgeBase) return;
     setChunkingSource(source);
@@ -1207,7 +1233,11 @@ export default function AdminPage() {
                     <tbody>
                       {visibleDocuments.map((document) => (
                         <tr key={document.source}>
-                          <td className={styles.documentName}>{document.filename}</td>
+                          <td className={styles.documentName}>
+                            <button className={styles.knowledgeBaseLink} onClick={() => void viewChunks(document.source, document.filename)} type="button">
+                              {document.filename}
+                            </button>
+                          </td>
                           <td>{document.file_type}</td>
                           <td>
                             <span className={styles.statusBadge}>
@@ -1615,6 +1645,27 @@ export default function AdminPage() {
               </select>
 
               {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
+      </Modal>
+      <Modal
+        open={chunkDetailOpen}
+        title={`分块详情：${chunkDetailDoc}`}
+        onClose={() => setChunkDetailOpen(false)}
+        actions={<button className={styles.backButton} onClick={() => setChunkDetailOpen(false)} type="button">关闭</button>}
+      >
+        {chunkLoading ? (
+          <p className={styles.emptyState}>加载中...</p>
+        ) : chunkItems.length > 0 ? (
+          <div style={{ maxHeight: "460px", overflowY: "auto", display: "grid", gap: 10 }}>
+            {chunkItems.map((chunk, idx) => (
+              <div key={chunk.id || idx} style={{ padding: 12, border: "1px solid var(--card-border)", borderRadius: 7, background: "var(--panel-alt)", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                <span style={{ color: "var(--helper)", fontSize: 11, fontWeight: 700 }}>片段 {idx + 1}</span>
+                <p style={{ margin: "6px 0 0", color: "var(--body)" }}>{chunk.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.emptyState}>暂无分块数据，请先点击分块按钮。</p>
+        )}
       </Modal>
     </main>
   );
