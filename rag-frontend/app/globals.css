@@ -141,3 +141,73 @@ a {
   gap: 10px;
   margin-top: 10px;
 }
+
+/* ===== Radix Select ===== */
+.radix-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #dce2ec;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.radix-select-trigger[data-placeholder] {
+  color: var(--helper);
+}
+
+.radix-select-trigger:focus-visible {
+  outline: 2px solid #a99df8;
+  outline-offset: 2px;
+}
+
+.radix-select-icon {
+  color: var(--helper);
+  display: inline-flex;
+}
+
+.radix-select-content {
+  z-index: 100;
+  min-width: var(--radix-select-trigger-width);
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 34px rgba(24, 33, 53, 0.16);
+  overflow: hidden;
+}
+
+.radix-select-viewport {
+  padding: 6px;
+}
+
+.radix-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 30px 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+}
+
+.radix-select-item[data-highlighted] {
+  background: #f0f2f8;
+  outline: none;
+}
+
+.radix-select-item-indicator {
+  position: absolute;
+  right: 8px;
+  display: inline-flex;
+  color: var(--primary);
+}

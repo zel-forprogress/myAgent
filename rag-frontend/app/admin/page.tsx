@@ -6,6 +6,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { MenuIcon, type MenuIconVariant } from "../../components/MenuIcon";
 import { Modal } from "../../components/Modal";
 import { Pagination } from "../../components/Pagination";
+import { Select } from "../../components/Select";
 import styles from "./page.module.css";
 import {
   apiBaseUrl,
@@ -1428,10 +1429,16 @@ export default function AdminPage() {
                 <label className={styles.label} htmlFor="new-password">密码</label>
                 <input id="new-password" className={styles.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少 6 个字符" />
                 <label className={styles.label} htmlFor="new-role">角色</label>
-                <select id="new-role" className={styles.select} value={newRole} onChange={(e) => setNewRole(e.target.value as "user" | "admin")}>
-                  <option value="user">普通用户 (user)</option>
-                  <option value="admin">管理员 (admin)</option>
-                </select>
+                <Select
+                  id="new-role"
+                  value={newRole}
+                  onChange={(v) => setNewRole(v as "user" | "admin")}
+                  options={[
+                    { value: "user", label: "普通用户 (user)" },
+                    { value: "admin", label: "管理员 (admin)" },
+                  ]}
+                  placeholder="请选择角色..."
+                />
                 <button className={styles.primaryButton} disabled={creatingUser} type="submit">
                   {creatingUser ? "创建中..." : "创建用户"}
                 </button>
@@ -1632,17 +1639,17 @@ export default function AdminPage() {
               <label className={styles.label} htmlFor="kb-embedding-model">
                 Embedding 模型 <span style={{ color: "var(--danger)" }}>*</span>
               </label>
-              <select
-                required
+              <Select
                 id="kb-embedding-model"
-                className={styles.select}
+                required
                 value={newEmbeddingModel}
-                onChange={(event) => setNewEmbeddingModel(event.target.value)}
-              >
-                <option value="">请选择...</option>
-                <option value="text-embedding-v4">text-embedding-v4 (通义千问)</option>
-                <option value="text-embedding-v3">text-embedding-v3 (通义千问)</option>
-              </select>
+                onChange={setNewEmbeddingModel}
+                options={[
+                  { value: "text-embedding-v4", label: "text-embedding-v4 (通义千问)" },
+                  { value: "text-embedding-v3", label: "text-embedding-v3 (通义千问)" },
+                ]}
+                placeholder="请选择 Embedding 模型..."
+              />
 
               {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
       </Modal>
