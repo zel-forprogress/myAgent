@@ -156,6 +156,14 @@ export default function AdminPage() {
   const [userPage, setUserPage] = useState(1);
   const USER_PAGE_SIZE = 15;
 
+  type AdminStats = {
+    knowledge_bases: number; users: number;
+    documents: { total: number; chunks: number; size: number; indexed: number; pending: number; failed: number };
+    milvus: { collections: number; vectors: number };
+    kb_breakdown: { name: string; documents: number; chunks: number; size: number; collection: string }[];
+  };
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+
   const selectedKnowledgeBase = useMemo(
     () =>
       knowledgeBases.find((item) => item.id === selectedKnowledgeBaseId) ??
@@ -329,6 +337,7 @@ export default function AdminPage() {
 
       await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList)]);
       try { await fetchUsers(userPage, USER_PAGE_SIZE); } catch { /* users tab will load on demand */ }
+      try { await fetchStats(); } catch { /* stats fail silently */ }
       setAuthReady(true);
     } catch (error) {
       handleAuthAwareError(error, "初始化后台失败。");
@@ -840,6 +849,12 @@ export default function AdminPage() {
     }
   }
 
+  async function fetchStats() {
+    const response = await authFetch(`${apiBaseUrl}/admin/stats`);
+    if (!response.ok) return;
+    setAdminStats((await response.json()) as AdminStats);
+  }
+
   async function fetchUsers(page = 1, pageSize = USER_PAGE_SIZE) {
     const response = await authFetch(
       `${apiBaseUrl}/admin/users?page=${page}&page_size=${pageSize}`,
@@ -1135,40 +1150,51 @@ export default function AdminPage() {
           {activeView === "overview" ? (
             <>
               <section className={styles.summaryGrid}>
-                <OverviewMetric
-                  icon="layers"
-                  label="知识库"
-                  value={String(knowledgeBases.length)}
-                />
-                <OverviewMetric
-                  icon="doc"
-                  label="文档总数"
-                  value={String(totalDocumentCount)}
-                />
-                <OverviewMetric
-                  icon="chat"
-                  label="聊天会话"
-                  value={String(sessions.length)}
-                />
-                <OverviewMetric
-                  icon="grid"
-                  label="服务状态"
-                  value={health === "ok" ? "正常" : health}
-                />
+                <OverviewMetric icon="layers" label="知识库" value={String(knowledgeBases.length)} />
+                <OverviewMetric icon="doc" label="文档总数" value={String(adminStats?.documents.total ?? totalDocumentCount)} />
+                <OverviewMetric icon="chat" label="聊天会话" value={String(sessions.length)} />
+                <OverviewMetric icon="people" label="用户数" value={String(adminStats?.users ?? "-")} />
               </section>
+
+              <section className={styles.summaryGrid} style={{ marginTop: 16 }}>
+                <OverviewMetric icon="grid" label="向量总数" value={adminStats ? String(adminStats.milvus.vectors) : "-"} />
+                <OverviewMetric icon="upload" label="存储用量" value={adminStats ? `${(adminStats.documents.size / 1024).toFixed(1)} KB` : "-"} />
+                <OverviewMetric icon="grid" label="服务状态" value={health === "ok" ? "正常" : health} />
+                <OverviewMetric icon="layers" label="Milvus 集合数" value={adminStats ? String(adminStats.milvus.collections) : "-"} />
+              </section>
+
               <div className={styles.overviewActions}>
-              <button
-                className={styles.refreshButton}
-                onClick={() => {
-                  void loadHealth();
-                  void loadDocumentCounts(knowledgeBases);
-                  void reloadSessions();
-                }}
-                type="button"
-              >
-                刷新统计
-              </button>
+                <button className={styles.refreshButton} onClick={() => { void loadHealth(); void loadDocumentCounts(knowledgeBases); void reloadSessions(); void fetchStats(); }} type="button">刷新统计</button>
               </div>
+
+              {adminStats ? (
+                <section className={styles.card} style={{ marginTop: 24 }}>
+                  <h3 className={styles.cardTitle}>文档状态分布</h3>
+                  <div style={{ display: "flex", gap: 8, margin: "14px 0 8px" }}>
+                    <Bar label="已分块" value={adminStats.documents.indexed} max={adminStats.documents.total || 1} color="#15803d" bg="#eaf8ef" />
+                    <Bar label="待分块" value={adminStats.documents.pending} max={adminStats.documents.total || 1} color="#b45309" bg="#fff7ed" />
+                    <Bar label="失败" value={adminStats.documents.failed} max={adminStats.documents.total || 1} color="#b91c1c" bg="#fff2f2" />
+                  </div>
+                </section>
+              ) : null}
+
+              {adminStats?.kb_breakdown.length ? (
+                <section className={styles.card} style={{ marginTop: 20 }}>
+                  <h3 className={styles.cardTitle}>知识库详情</h3>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead><tr><th>知识库</th><th>Collection</th><th>文档数</th><th>Chunks</th><th>存储大小</th></tr></thead>
+                      <tbody>
+                        {adminStats.kb_breakdown.map((kb) => (
+                          <tr key={kb.collection}>
+                            <td>{kb.name}</td><td>{kb.collection}</td><td>{kb.documents}</td><td>{kb.chunks}</td><td>{(kb.size / 1024).toFixed(1)} KB</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
               {docError ? <NoticeBox notice={{ type: "error", text: docError }} /> : null}
             </>
           ) : null}
@@ -1668,6 +1694,21 @@ export default function AdminPage() {
         )}
       </Modal>
     </main>
+  );
+}
+
+function Bar({ label, value, max, color, bg }: { label: string; value: number; max: number; color: string; bg: string }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div style={{ flex: 1, minWidth: 100, padding: "10px 12px", borderRadius: 7, background: bg }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 12, fontWeight: 600, color }}>
+        <span>{label}</span><span>{value}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 4, background: "#e2e8f0", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 4, background: color, transition: "width 0.4s" }} />
+      </div>
+      <div style={{ marginTop: 4, fontSize: 10, color: "var(--helper)" }}>{pct}%</div>
+    </div>
   );
 }
 
