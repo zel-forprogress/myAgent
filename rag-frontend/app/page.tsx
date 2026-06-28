@@ -256,7 +256,7 @@ export default function HomePage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = question.trim();
-    if (!trimmedQuestion) { setError("请输入问题后再发送。"); return; }
+    if (!trimmedQuestion) return;
     if (!currentSessionId) { setError("当前没有可用会话，请先新建会话。"); return; }
     setLoading(true);
     setError("");
