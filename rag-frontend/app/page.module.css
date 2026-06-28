@@ -887,14 +887,51 @@
 .sourceMeta {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.sourceMetaActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .sourcePath,
 .sourceScore {
   color: var(--helper);
   font-size: 11px;
+}
+
+.sourcePath {
+  overflow-wrap: anywhere;
+}
+
+.retrievalTypeBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.retrievalTypeVector {
+  color: #15803d;
+  background: #eaf8ef;
+}
+
+.retrievalTypeKeyword {
+  color: #b45309;
+  background: #fff7ed;
+}
+
+.retrievalTypeHybrid {
+  color: #2563eb;
+  background: #dbeafe;
 }
 
 .sourceContent {

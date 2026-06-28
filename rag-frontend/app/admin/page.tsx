@@ -163,6 +163,7 @@ export default function AdminPage() {
     kb_breakdown: { name: string; documents: number; chunks: number; size: number; collection: string }[];
   };
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
 
   const selectedKnowledgeBase = useMemo(
     () =>
@@ -1145,7 +1146,9 @@ export default function AdminPage() {
                 </button>
               ) : null}
               {activeView === "overview" ? (
-                <button className={styles.refreshButton} onClick={() => { void loadHealth(); void loadDocumentCounts(knowledgeBases); void reloadSessions(); void fetchStats(); }} type="button">刷新统计</button>
+                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats()]); } finally { setStatsRefreshing(false); } }} type="button">
+                  {statsRefreshing ? "刷新中..." : "刷新统计"}
+                </button>
               ) : null}
             </div>
           </div>
