@@ -1650,6 +1650,7 @@ export default function AdminPage() {
                 ]}
                 placeholder="请选择 Embedding 模型..."
               />
+              <p className={styles.helperText}>用于将文档内容转换为向量，不同模型影响检索精度</p>
 
               {knowledgeBaseNotice ? <NoticeBox notice={knowledgeBaseNotice} /> : null}
       </Modal>
