@@ -50,12 +50,6 @@ def ingest(
         _ = current_user
         knowledge_base = resolve_knowledge_base(db, request.knowledge_base_id)
         normalized_source = normalize_source(request.path)
-        chunks, skipped = ingest_document(
-            knowledge_base.collection_name, normalized_source,
-            embedding_model=knowledge_base.embedding_model,
-        )
-        character_count, _ = get_document_character_count(normalized_source)
-        chunk_status = "success" if chunks > 0 else "failed"
         storage_metadata = get_stored_file_metadata(normalized_source)
         upsert_document_record(
             db,
@@ -68,19 +62,16 @@ def ingest(
             storage_object_key=storage_metadata.object_key,
             content_type=storage_metadata.content_type,
             file_size=storage_metadata.file_size,
-            chunks=chunks + skipped,
-            status=chunk_status,
-            character_count=character_count,
+            chunks=0,
+            status="pending",
+            character_count=0,
             uploaded_at=storage_metadata.uploaded_at,
         )
-        message = "Document ingested successfully"
-        if chunks == 0 and skipped > 0:
-            message = "Document already ingested; no new chunks added"
         return IngestResponse(
             success=True,
-            message=message,
-            chunks=chunks,
-            skipped=skipped,
+            message="Document uploaded, ready for chunking",
+            chunks=0,
+            skipped=0,
             knowledge_base_id=knowledge_base.id,
             knowledge_base_name=knowledge_base.name,
             collection=knowledge_base.collection_name,
@@ -119,12 +110,6 @@ async def ingest_upload(
             content,
             knowledge_base_slug=knowledge_base.slug,
         )
-        chunks, skipped = ingest_document(
-            knowledge_base.collection_name, stored_file.source,
-            embedding_model=knowledge_base.embedding_model,
-        )
-        character_count, _ = get_document_character_count(stored_file.source)
-        chunk_status = "success" if chunks > 0 else "failed"
         upsert_document_record(
             db,
             knowledge_base=knowledge_base,
@@ -136,21 +121,19 @@ async def ingest_upload(
             storage_object_key=stored_file.object_key,
             content_type=stored_file.content_type,
             file_size=stored_file.file_size,
-            chunks=chunks + skipped,
-            status=chunk_status,
-            character_count=character_count,
+            chunks=0,
+            status="pending",
+            character_count=0,
             uploaded_at=stored_file.uploaded_at,
         )
 
-        message = "Uploaded document ingested successfully"
-        if chunks == 0 and skipped > 0:
-            message = "Uploaded document already ingested; no new chunks added"
+        message = "Document uploaded, ready for chunking"
 
         return IngestResponse(
             success=True,
             message=message,
-            chunks=chunks,
-            skipped=skipped,
+            chunks=0,
+            skipped=0,
             knowledge_base_id=knowledge_base.id,
             knowledge_base_name=knowledge_base.name,
             collection=knowledge_base.collection_name,
@@ -200,6 +183,69 @@ def documents(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("List documents failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/documents/chunk", response_model=IngestResponse)
+def chunk_document(
+    request: DeleteDocumentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> IngestResponse:
+    try:
+        _ = current_user
+        knowledge_base = resolve_knowledge_base(db, request.knowledge_base_id)
+        normalized_source = normalize_source(request.source)
+        chunks, skipped = ingest_document(
+            knowledge_base.collection_name, normalized_source,
+            embedding_model=knowledge_base.embedding_model,
+        )
+        character_count, _ = get_document_character_count(normalized_source)
+        storage_metadata = get_stored_file_metadata(normalized_source)
+        chunk_status = "success" if chunks > 0 else "failed"
+        upsert_document_record(
+            db,
+            knowledge_base=knowledge_base,
+            filename=extract_filename(normalized_source),
+            file_type=detect_file_type(normalized_source),
+            source=normalized_source,
+            storage_provider=storage_metadata.provider,
+            storage_bucket=storage_metadata.bucket,
+            storage_object_key=storage_metadata.object_key,
+            content_type=storage_metadata.content_type,
+            file_size=storage_metadata.file_size,
+            chunks=chunks + skipped,
+            status=chunk_status,
+            character_count=character_count,
+            uploaded_at=storage_metadata.uploaded_at,
+        )
+        message = "Document chunked successfully"
+        if chunks == 0 and skipped > 0:
+            message = "Document already chunked; no new chunks added"
+        return IngestResponse(
+            success=True,
+            message=message,
+            chunks=chunks,
+            skipped=skipped,
+            knowledge_base_id=knowledge_base.id,
+            knowledge_base_name=knowledge_base.name,
+            collection=knowledge_base.collection_name,
+            stored_path=normalized_source,
+            filename=extract_filename(normalized_source),
+            file_type=detect_file_type(normalized_source),
+            status=chunk_status,
+            character_count=character_count,
+            uploaded_at=storage_metadata.uploaded_at,
+            storage_provider=storage_metadata.provider,
+            storage_bucket=storage_metadata.bucket,
+            storage_object_key=storage_metadata.object_key,
+            content_type=storage_metadata.content_type,
+            file_size=storage_metadata.file_size,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Chunk document failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

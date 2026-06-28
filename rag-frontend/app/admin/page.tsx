@@ -700,6 +700,30 @@ export default function AdminPage() {
     }
   }
 
+  async function handleChunkDocument(source: string) {
+    if (!selectedKnowledgeBase) return;
+    setDeletingSource(source);
+    setDeleteNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/documents/chunk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, knowledge_base_id: selectedKnowledgeBase.id }),
+      });
+      const payload = (await response.json()) as IngestResponse | { detail?: string };
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "分块失败。");
+      const successPayload = payload as IngestResponse;
+      setDeleteNotice({ type: "success", text: `分块完成：${successPayload.chunks} 个 chunk，跳过 ${successPayload.skipped} 个重复。` });
+      await loadDocuments(selectedKnowledgeBase.id);
+      await loadDocumentCounts(knowledgeBases);
+    } catch (error) {
+      if (error instanceof AuthError) { handleAuthAwareError(error, "分块失败。"); return; }
+      setDeleteNotice({ type: "error", text: error instanceof Error ? error.message : "分块失败。" });
+    } finally {
+      setDeletingSource("");
+    }
+  }
+
   async function handleDeleteDocument(source: string) {
     if (!selectedKnowledgeBase) {
       return;
@@ -1202,6 +1226,9 @@ export default function AdminPage() {
                               : "-"}
                           </td>
                           <td>
+                            <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={deletingSource === document.source} onClick={() => void handleChunkDocument(document.source)} type="button">
+                              {deletingSource === document.source ? "分块中..." : "分块"}
+                            </button>
                             <button
                               className={styles.deleteButton}
                               disabled={deletingSource === document.source}
