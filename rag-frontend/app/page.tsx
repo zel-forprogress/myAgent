@@ -60,12 +60,26 @@ export default function HomePage() {
   const [menuSessionId, setMenuSessionId] = useState("");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const chatCanvasRef = useRef<HTMLDivElement | null>(null);
+  const isUserScrolledUpRef = useRef(false);
 
   useEffect(() => {
     void bootstrap();
   }, []);
 
+  // 监听用户手动滚动：如果在底部附近则允许自动滚动，否则禁止
   useEffect(() => {
+    const el = chatCanvasRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      isUserScrolledUpRef.current = distanceFromBottom > 100;
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isUserScrolledUpRef.current) return;
     const el = chatCanvasRef.current;
     if (!el) return;
     requestAnimationFrame(() => {
@@ -176,6 +190,7 @@ export default function HomePage() {
   }
 
   async function selectSession(sessionId: string, currentSessions: SessionResponse[] = sessions) {
+    isUserScrolledUpRef.current = false;
     setSessionLoading(true);
     setError("");
     try {
@@ -267,6 +282,7 @@ export default function HomePage() {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
     if (!currentSessionId) { setError("当前没有可用会话，请先新建会话。"); return; }
+    isUserScrolledUpRef.current = false; // 用户主动发送时，强制跟随滚动
     setLoading(true);
     setError("");
     try {
