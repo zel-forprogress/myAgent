@@ -206,15 +206,10 @@
   line-height: 1;
 }
 
-.sessionMenuButton:hover {
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
+.sessionMenuButton:hover,
 .sessionMenuButtonActive {
   background: var(--primary-soft);
   color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
 }
 
 .sessionMenu {
