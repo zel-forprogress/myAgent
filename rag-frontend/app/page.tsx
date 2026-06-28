@@ -58,6 +58,7 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [sessionKeyword, setSessionKeyword] = useState("");
   const [menuSessionId, setMenuSessionId] = useState("");
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   useEffect(() => {
     void bootstrap();
@@ -269,10 +270,13 @@ export default function HomePage() {
       setMessages((current) => [...current, userMessage, assistantMessage]);
       setResult({ answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" });
       setQuestion("");
+      const controller = new AbortController();
+      setAbortController(controller);
       const response = await fetch(`${apiBaseUrl}/sessions/${currentSessionId}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify({ question: trimmedQuestion, top_k: topK, knowledge_base_ids: selectedKnowledgeBaseIds }),
+        signal: controller.signal,
       });
       if (!response.ok) { const payload = (await response.json()) as { detail?: string }; throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "请求失败。"); }
       if (!response.body) throw new Error("流式响应为空。");
@@ -324,9 +328,14 @@ export default function HomePage() {
       const updatedMessages = await fetchSessionMessages(currentSessionId);
       setMessages(updatedMessages.messages);
     } catch (submitError) {
-      handleAuthAwareError(submitError, "请求失败，请稍后重试。");
+      if (submitError instanceof DOMException && submitError.name === "AbortError") {
+        // User cancelled — silently handled
+      } else {
+        handleAuthAwareError(submitError, "请求失败，请稍后重试。");
+      }
     } finally {
       setLoading(false);
+      setAbortController(null);
     }
   }
 
@@ -542,7 +551,11 @@ export default function HomePage() {
                   <input id="top-k" className={styles.range} max={8} min={1} onChange={(event) => setTopK(Number(event.target.value))} type="range" value={topK} />
                   <span className={styles.topkValue}>{topK}</span>
                 </div>
-                <button className={styles.sendButton} disabled={loading || bootLoading || sessionLoading} type="submit">{loading ? "发送中..." : "发送"}</button>
+                {loading ? (
+                  <button className={styles.sendButton} style={{ background: "var(--danger)" }} onClick={() => abortController?.abort()} type="button">停止</button>
+                ) : (
+                  <button className={styles.sendButton} disabled={bootLoading || sessionLoading} type="submit">发送</button>
+                )}
               </div>
             </form>
             {error ? <p className={styles.error}>{error}</p> : null}
@@ -588,8 +601,12 @@ export default function HomePage() {
                       <span className={styles.sourcePath}>{source.source || "未知来源"}</span>
                       <span className={styles.sourceMetaActions}>
                         <RetrievalTypeBadge type={source.retrieval_type} />
-                        <span className={styles.sourceScore}>{typeof source.score === "number" ? source.score.toFixed(3) : "n/a"}</span>
                       </span>
+                    </div>
+                    <div className={styles.sourceScoreGrid}>
+                      <ScoreItem label="最终分" value={source.rerank_score ?? source.score} />
+                      <ScoreItem label="向量分" value={source.vector_score} />
+                      <ScoreItem label="关键词分" value={source.keyword_score} />
                     </div>
                     <p className={styles.sourceContent}>{source.content}</p>
                   </article>
@@ -608,6 +625,19 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
     <span className={styles.badge}>
       <span className={styles.badgeLabel}>{label}</span>
       <span className={styles.badgeValue}>{value}</span>
+    </span>
+  );
+}
+
+function formatScore(value?: number | null) {
+  return typeof value === "number" ? value.toFixed(3) : "-";
+}
+
+function ScoreItem({ label, value }: { label: string; value?: number | null }) {
+  return (
+    <span className={styles.sourceScoreItem}>
+      <span className={styles.sourceScoreLabel}>{label}</span>
+      <span className={styles.sourceScoreValue}>{formatScore(value)}</span>
     </span>
   );
 }
