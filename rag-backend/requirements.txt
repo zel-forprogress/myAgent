@@ -19,6 +19,7 @@ pymilvus
 pypdf
 tiktoken
 python-multipart
+jieba
 
 # testing
 pytest>=8.0

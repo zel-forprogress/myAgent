@@ -200,23 +200,19 @@ def delete_keyword_chunks(
 
 
 def extract_query_terms(question: str) -> list[str]:
+    import jieba
+
     terms: list[str] = []
     seen_terms: set[str] = set()
 
-    # Chinese n-gram: sliding window of 2-4 chars
-    chinese_spans = [
-        m for m in re.finditer(r"[一-鿿]{2,}", question)
-    ]
-    for m in chinese_spans:
-        span = m.group()
-        for n in (2, 3, 4):
-            for i in range(len(span) - n + 1):
-                term = span[i:i + n]
-                if term not in seen_terms:
-                    terms.append(term)
-                    seen_terms.add(term)
-                    if len(terms) >= 10:
-                        return terms
+    # Chinese: jieba segmentation
+    for word in jieba.cut(question):
+        word = word.strip()
+        if len(word) >= 2 and word not in seen_terms:
+            terms.append(word)
+            seen_terms.add(word)
+            if len(terms) >= 10:
+                return terms
 
     # English / alphanumeric terms
     for term in KEYWORD_RE.findall(question.lower()):
