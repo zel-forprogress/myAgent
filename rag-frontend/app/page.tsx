@@ -483,12 +483,20 @@ export default function HomePage() {
               <div className={styles.emptyHero}><p className={styles.emptyState}>正在加载会话内容...</p></div>
             ) : messages.length > 0 ? (
               <div className={styles.messageList}>
-                {messages.map((message) => (
+                {messages.map((message, idx) => {
+                  const isLastAssistant = message.role === "assistant" && idx === messages.length - 1;
+                  const showLoading = isLastAssistant && loading && !message.content;
+                  return (
                   <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
                     <div className={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</div>
-                    <p className={styles.messageText}>{message.content}</p>
+                    {showLoading ? (
+                      <p className={styles.loadingHint}>{getLoadingHint(result?.steps ?? [])}</p>
+                    ) : (
+                      <p className={styles.messageText}>{message.content}</p>
+                    )}
                   </article>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className={styles.emptyHero}>
@@ -649,6 +657,20 @@ function ScoreItem({ label, value }: { label: string; value?: number | null }) {
       <span className={styles.sourceScoreValue}>{formatScore(value)}</span>
     </span>
   );
+}
+
+const STEP_LABELS: Record<string, string> = {
+  analyze: "正在分析问题...",
+  retrieve: "正在检索知识库...",
+  check: "正在检查相关性...",
+  rewrite: "正在改写问题...",
+  generate: "正在生成回答...",
+};
+
+function getLoadingHint(steps: string[]): string {
+  if (steps.length === 0) return "正在思考...";
+  const last = steps[steps.length - 1];
+  return STEP_LABELS[last] ?? `正在执行 ${last}...`;
 }
 
 const RETRIEVAL_TYPE_MAP: Record<string, { label: string; className: string }> = {

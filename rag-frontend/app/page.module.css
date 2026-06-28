@@ -510,6 +510,30 @@
   overflow-wrap: anywhere;
 }
 
+.loadingHint {
+  margin: 0;
+  color: var(--helper);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadingHint::after {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--card-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ===== Rename bar ===== */
 .renameBar {
   display: flex;
