@@ -530,6 +530,7 @@ def retrieve_sources(
             content=hit["entity"]["text"],
             source=hit["entity"].get("source"),
             score=hit.get("distance", hit.get("score")),
+            retrieval_type="vector",
         )
         for hit in hits
     ]
@@ -573,6 +574,7 @@ def retrieve_keyword_sources(
                     content=row.content,
                     source=row.source,
                     score=score,
+                    retrieval_type="keyword",
                 )
             )
         sources.sort(key=lambda item: item.score or 0.0, reverse=True)
@@ -620,8 +622,20 @@ def retrieve_sources_multi(
     for source in merged_sources:
         key = (source.source or "", source.content)
         existing = deduplicated_by_chunk.get(key)
-        if existing is None or (source.score or 0.0) > (existing.score or 0.0):
+        if existing is None:
             deduplicated_by_chunk[key] = source
+            continue
+
+        merged_type = (
+            existing.retrieval_type
+            if existing.retrieval_type == source.retrieval_type
+            else "hybrid"
+        )
+        if (source.score or 0.0) > (existing.score or 0.0):
+            source.retrieval_type = merged_type
+            deduplicated_by_chunk[key] = source
+        else:
+            existing.retrieval_type = merged_type
 
     deduplicated_sources = list(deduplicated_by_chunk.values())
     deduplicated_sources.sort(key=lambda item: item.score or 0.0, reverse=True)

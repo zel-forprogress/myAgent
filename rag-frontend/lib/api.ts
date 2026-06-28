@@ -2,6 +2,7 @@ export type SourceChunk = {
   content: string;
   source?: string | null;
   score?: number | null;
+  retrieval_type?: "vector" | "keyword" | "hybrid" | string | null;
 };
 
 export type UserResponse = {

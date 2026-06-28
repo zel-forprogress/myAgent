@@ -566,7 +566,10 @@ export default function HomePage() {
                   <article className={styles.sourceCard} key={`${source.source}-${index}`} style={{ marginBottom: 8 }}>
                     <div className={styles.sourceMeta}>
                       <span className={styles.sourcePath}>{source.source || "未知来源"}</span>
-                      <span className={styles.sourceScore}>{typeof source.score === "number" ? source.score.toFixed(3) : "n/a"}</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <RetrievalTypeBadge type={source.retrieval_type} />
+                        <span className={styles.sourceScore}>{typeof source.score === "number" ? source.score.toFixed(3) : "n/a"}</span>
+                      </span>
                     </div>
                     <p className={styles.sourceContent}>{source.content}</p>
                   </article>
@@ -585,6 +588,31 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
     <span className={styles.badge}>
       <span className={styles.badgeLabel}>{label}</span>
       <span className={styles.badgeValue}>{value}</span>
+    </span>
+  );
+}
+
+const RETRIEVAL_TYPE_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  vector: { label: "向量", color: "#15803d", bg: "#eaf8ef" },
+  keyword: { label: "关键词", color: "#b45309", bg: "#fff7ed" },
+  hybrid: { label: "混合", color: "#2563eb", bg: "#dbeafe" },
+};
+
+function RetrievalTypeBadge({ type }: { type?: string | null }) {
+  const meta = RETRIEVAL_TYPE_MAP[type || ""];
+  if (!meta) return null;
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "1px 6px",
+      borderRadius: 4,
+      fontSize: 10,
+      fontWeight: 700,
+      color: meta.color,
+      background: meta.bg,
+    }}>
+      {meta.label}
     </span>
   );
 }

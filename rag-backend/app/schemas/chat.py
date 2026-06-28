@@ -17,6 +17,7 @@ class SourceChunk(BaseModel):
     content: str
     source: Optional[str] = None
     score: Optional[float] = None
+    retrieval_type: Literal["vector", "keyword", "hybrid"] = "vector"
 
 
 class ChatResponse(BaseModel):
