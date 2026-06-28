@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -42,3 +42,27 @@ class KnowledgeBaseDocument(Base):
     )
 
     knowledge_base: Mapped["KnowledgeBase"] = relationship(back_populates="documents")
+
+
+class KnowledgeBaseDocumentChunk(Base):
+    __tablename__ = "knowledge_base_document_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "knowledge_base_id",
+            "source",
+            "content_hash",
+            name="uq_kb_document_chunks_kb_source_hash",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(1024), index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    content: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

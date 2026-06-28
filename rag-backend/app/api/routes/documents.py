@@ -23,6 +23,7 @@ from app.services.knowledge_base_service import resolve_knowledge_base
 from app.services.rag_service import (
     detect_file_type,
     delete_document,
+    delete_keyword_chunks,
     extract_filename,
     get_document_character_count,
     get_document_uploaded_at,
@@ -200,6 +201,8 @@ def chunk_document(
         chunks, skipped = ingest_document(
             knowledge_base.collection_name, normalized_source,
             embedding_model=knowledge_base.embedding_model,
+            db=db,
+            knowledge_base_id=knowledge_base.id,
         )
         character_count, _ = get_document_character_count(normalized_source)
         storage_metadata = get_stored_file_metadata(normalized_source)
@@ -294,7 +297,12 @@ def delete_documents(
         _ = current_user
         knowledge_base = resolve_knowledge_base(db, request.knowledge_base_id)
         deleted = delete_document(knowledge_base.collection_name, request.source)
-        if deleted > 0:
+        deleted_keyword_chunks = delete_keyword_chunks(
+            db,
+            knowledge_base_id=knowledge_base.id,
+            source=request.source,
+        )
+        if deleted > 0 or deleted_keyword_chunks > 0:
             deleted_record = delete_document_record(
                 db,
                 knowledge_base_id=knowledge_base.id,
@@ -306,7 +314,7 @@ def delete_documents(
             ):
                 delete_stored_file(deleted_record.source)
         message = "Document deleted successfully"
-        if deleted == 0:
+        if deleted == 0 and deleted_keyword_chunks == 0:
             message = "Document not found"
         return DeleteDocumentResponse(
             success=True,

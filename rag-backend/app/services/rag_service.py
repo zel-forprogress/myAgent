@@ -1,4 +1,5 @@
 from collections import Counter
+from hashlib import sha256
 from io import BytesIO
 from datetime import datetime
 from pathlib import Path
@@ -13,8 +14,12 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from pymilvus import DataType, MilvusClient
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.db import SessionLocal
+from app.models import KnowledgeBase, KnowledgeBaseDocumentChunk
 from app.schemas import DocumentInfo, SourceChunk
 from app.services.observability import (
     extract_usage_details,
@@ -33,6 +38,7 @@ from app.services.storage_service import (
 
 
 VALID_COLLECTION_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
+KEYWORD_RE = re.compile(r"[A-Za-z0-9_./:-]+|[\u4e00-\u9fff]{2,}")
 
 
 def is_valid_collection_name(collection_name: str) -> bool:
@@ -138,6 +144,90 @@ def source_variants(source: str) -> set[str]:
         source.replace("\\", "/"),
         source.replace("/", "\\"),
     }
+
+
+def content_hash(content: str) -> str:
+    return sha256(content.encode("utf-8")).hexdigest()
+
+
+def sync_keyword_chunks(
+    db: Session,
+    *,
+    knowledge_base_id: str,
+    source: str,
+    chunks: list[Document],
+) -> None:
+    normalized_source = normalize_source(source)
+    variants = source_variants(normalized_source)
+
+    db.query(KnowledgeBaseDocumentChunk).filter(
+        KnowledgeBaseDocumentChunk.knowledge_base_id == knowledge_base_id,
+        KnowledgeBaseDocumentChunk.source.in_(variants),
+    ).delete(synchronize_session=False)
+
+    for index, chunk in enumerate(chunks):
+        text = chunk.page_content.strip()
+        if not text:
+            continue
+        db.add(
+            KnowledgeBaseDocumentChunk(
+                knowledge_base_id=knowledge_base_id,
+                source=chunk.metadata.get("source") or normalized_source,
+                chunk_index=index,
+                content=text,
+                content_hash=content_hash(text),
+            )
+        )
+    db.commit()
+
+
+def delete_keyword_chunks(
+    db: Session,
+    *,
+    knowledge_base_id: str,
+    source: str,
+) -> int:
+    deleted = (
+        db.query(KnowledgeBaseDocumentChunk)
+        .filter(
+            KnowledgeBaseDocumentChunk.knowledge_base_id == knowledge_base_id,
+            KnowledgeBaseDocumentChunk.source.in_(source_variants(source)),
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted or 0)
+
+
+def extract_query_terms(question: str) -> list[str]:
+    terms: list[str] = []
+    seen_terms: set[str] = set()
+    for term in KEYWORD_RE.findall(question.lower()):
+        normalized_term = term.strip()
+        if len(normalized_term) < 2 or normalized_term in seen_terms:
+            continue
+        terms.append(normalized_term)
+        seen_terms.add(normalized_term)
+        if len(terms) >= 8:
+            break
+    return terms
+
+
+def escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def keyword_score(content: str, terms: list[str]) -> float:
+    text = content.lower()
+    raw_score = 0.0
+    for term in terms:
+        count = text.count(term)
+        if count <= 0:
+            continue
+        raw_score += min(count, 5) * min(max(len(term), 2), 12)
+    if raw_score <= 0:
+        return 0.0
+    return min(0.95, 0.45 + raw_score / 80)
 
 
 def get_existing_texts_by_sources(
@@ -353,7 +443,13 @@ def load_document_file(path: str) -> List[Document]:
     ]
 
 
-def ingest_document(collection_name: str, path: str, embedding_model: str | None = None) -> tuple[int, int]:
+def ingest_document(
+    collection_name: str,
+    path: str,
+    embedding_model: str | None = None,
+    db: Session | None = None,
+    knowledge_base_id: str | None = None,
+) -> tuple[int, int]:
     documents = load_document_file(path)
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=120)
     chunks = splitter.split_documents(documents)
@@ -379,6 +475,13 @@ def ingest_document(collection_name: str, path: str, embedding_model: str | None
 
     skipped = len(chunks) - len(new_chunks)
     if not new_chunks:
+        if db is not None and knowledge_base_id:
+            sync_keyword_chunks(
+                db,
+                knowledge_base_id=knowledge_base_id,
+                source=chunks[0].metadata.get("source") or path,
+                chunks=chunks,
+            )
         return 0, skipped
 
     texts = [chunk.page_content for chunk in new_chunks]
@@ -394,6 +497,13 @@ def ingest_document(collection_name: str, path: str, embedding_model: str | None
     client.insert(collection_name=collection_name, data=rows)
     client.flush(collection_name)
     client.load_collection(collection_name)
+    if db is not None and knowledge_base_id:
+        sync_keyword_chunks(
+            db,
+            knowledge_base_id=knowledge_base_id,
+            source=chunks[0].metadata.get("source") or path,
+            chunks=chunks,
+        )
     return len(new_chunks), skipped
 
 
@@ -425,6 +535,52 @@ def retrieve_sources(
     ]
 
 
+def retrieve_keyword_sources(
+    collection_name: str,
+    question: str,
+    top_k: int = 4,
+) -> List[SourceChunk]:
+    terms = extract_query_terms(question)
+    if not terms:
+        return []
+
+    filters = [
+        KnowledgeBaseDocumentChunk.content.ilike(f"%{escape_like(term)}%", escape="\\")
+        for term in terms
+    ]
+    if not filters:
+        return []
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(KnowledgeBaseDocumentChunk)
+            .join(KnowledgeBase, KnowledgeBaseDocumentChunk.knowledge_base_id == KnowledgeBase.id)
+            .filter(KnowledgeBase.collection_name == collection_name)
+            .filter(or_(*filters))
+            .order_by(KnowledgeBaseDocumentChunk.id.desc())
+            .limit(max(top_k * 5, 20))
+            .all()
+        )
+
+        sources: list[SourceChunk] = []
+        for row in rows:
+            score = keyword_score(row.content, terms)
+            if score <= 0:
+                continue
+            sources.append(
+                SourceChunk(
+                    content=row.content,
+                    source=row.source,
+                    score=score,
+                )
+            )
+        sources.sort(key=lambda item: item.score or 0.0, reverse=True)
+        return sources[:top_k]
+    finally:
+        db.close()
+
+
 def retrieve_sources_multi(
     collection_names: list[str],
     question: str,
@@ -452,16 +608,22 @@ def retrieve_sources_multi(
                 embedding_model=embedding_model,
             )
         )
+        merged_sources.extend(
+            retrieve_keyword_sources(
+                collection_name=collection_name,
+                question=question,
+                top_k=top_k,
+            )
+        )
 
-    deduplicated_sources: list[SourceChunk] = []
-    seen_chunks: set[tuple[str, str]] = set()
+    deduplicated_by_chunk: dict[tuple[str, str], SourceChunk] = {}
     for source in merged_sources:
         key = (source.source or "", source.content)
-        if key in seen_chunks:
-            continue
-        deduplicated_sources.append(source)
-        seen_chunks.add(key)
+        existing = deduplicated_by_chunk.get(key)
+        if existing is None or (source.score or 0.0) > (existing.score or 0.0):
+            deduplicated_by_chunk[key] = source
 
+    deduplicated_sources = list(deduplicated_by_chunk.values())
     deduplicated_sources.sort(key=lambda item: item.score or 0.0, reverse=True)
     return deduplicated_sources[:top_k]
 
