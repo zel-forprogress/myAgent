@@ -522,7 +522,20 @@ export default function HomePage() {
             </div>
 
             <form className={styles.composerForm} onSubmit={handleSubmit}>
-              <textarea className={styles.composerInput} onChange={(event) => setQuestion(event.target.value)} placeholder="输入你的问题..." rows={2} value={question} />
+              <textarea
+                className={styles.composerInput}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    const form = event.currentTarget.closest("form");
+                    if (form) form.requestSubmit();
+                  }
+                }}
+                placeholder="输入你的问题... (Enter 发送，Shift+Enter 换行)"
+                rows={2}
+                value={question}
+              />
               <div className={styles.composerFooter}>
                 <div className={styles.composerMeta}>
                   <label className={styles.topkLabel} htmlFor="top-k">检索片段数</label>
