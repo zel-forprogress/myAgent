@@ -159,7 +159,7 @@ a {
   cursor: pointer;
 }
 
-.radix-select-trigger[data-placeholder] {
+.radix-select-trigger [data-placeholder] {
   color: var(--helper);
 }
 

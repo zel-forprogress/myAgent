@@ -19,15 +19,13 @@ export function Select({ value, onChange, options, placeholder = "请选择...",
   return (
     <RadixSelect.Root value={value || undefined} onValueChange={onChange} required={required}>
       <RadixSelect.Trigger id={id} className="radix-select-trigger">
-        <RadixSelect.Value>
+        <RadixSelect.Value placeholder={placeholder}>
           {selected ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               {selected.icon ? <MenuIcon variant={selected.icon} /> : null}
               {selected.label}
             </span>
-          ) : (
-            <span style={{ color: "var(--helper)" }}>{placeholder}</span>
-          )}
+          ) : null}
         </RadixSelect.Value>
         <RadixSelect.Icon className="radix-select-icon">
           <ChevronDown />
