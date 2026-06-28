@@ -59,14 +59,15 @@ export default function HomePage() {
   const [sessionKeyword, setSessionKeyword] = useState("");
   const [menuSessionId, setMenuSessionId] = useState("");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatCanvasRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void bootstrap();
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatCanvasRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
@@ -474,7 +475,7 @@ export default function HomePage() {
             </div>
           ) : null}
 
-          <div className={styles.chatCanvas}>
+          <div className={styles.chatCanvas} ref={chatCanvasRef}>
             {bootLoading || sessionLoading ? (
               <div className={styles.emptyHero}><p className={styles.emptyState}>正在加载会话内容...</p></div>
             ) : messages.length > 0 ? (
@@ -485,7 +486,6 @@ export default function HomePage() {
                     <p className={styles.messageText}>{message.content}</p>
                   </article>
                 ))}
-                <div ref={messagesEndRef} />
               </div>
             ) : (
               <div className={styles.emptyHero}>
