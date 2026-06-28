@@ -1186,7 +1186,7 @@ export default function AdminPage() {
                           <td>{document.file_type}</td>
                           <td>
                             <span className={styles.statusBadge}>
-                              {document.status === "indexed" ? "已入库" : document.status}
+                              {{ success: "已分块", pending: "待分块", failed: "分块失败" }[document.status] || document.status}
                             </span>
                           </td>
                           <td>{document.storage_provider}</td>

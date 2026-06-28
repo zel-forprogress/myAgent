@@ -167,17 +167,19 @@ def get_document_uploaded_at(source: str) -> str:
 
 
 def get_document_character_count(source: str) -> tuple[int, str]:
+    """Returns (char_count, chunk_status).
+    chunk_status: success | pending | failed"""
     try:
         text = extract_text_from_source(source).strip()
     except FileNotFoundError:
-        return 0, "missing"
+        return 0, "failed"
     except Exception:
-        return 0, "parse_error"
+        return 0, "failed"
 
     if not text:
-        return 0, "empty"
+        return 0, "failed"
 
-    return len(text), "indexed"
+    return len(text), "success"
 
 
 def list_documents(collection_name: str) -> list[DocumentInfo]:

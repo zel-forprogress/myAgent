@@ -54,7 +54,8 @@ def ingest(
             knowledge_base.collection_name, normalized_source,
             embedding_model=knowledge_base.embedding_model,
         )
-        character_count, status = get_document_character_count(normalized_source)
+        character_count, _ = get_document_character_count(normalized_source)
+        chunk_status = "success" if chunks > 0 else "failed"
         storage_metadata = get_stored_file_metadata(normalized_source)
         upsert_document_record(
             db,
@@ -68,7 +69,7 @@ def ingest(
             content_type=storage_metadata.content_type,
             file_size=storage_metadata.file_size,
             chunks=chunks + skipped,
-            status=status,
+            status=chunk_status,
             character_count=character_count,
             uploaded_at=storage_metadata.uploaded_at,
         )
@@ -122,7 +123,8 @@ async def ingest_upload(
             knowledge_base.collection_name, stored_file.source,
             embedding_model=knowledge_base.embedding_model,
         )
-        character_count, status = get_document_character_count(stored_file.source)
+        character_count, _ = get_document_character_count(stored_file.source)
+        chunk_status = "success" if chunks > 0 else "failed"
         upsert_document_record(
             db,
             knowledge_base=knowledge_base,
@@ -135,7 +137,7 @@ async def ingest_upload(
             content_type=stored_file.content_type,
             file_size=stored_file.file_size,
             chunks=chunks + skipped,
-            status=status,
+            status=chunk_status,
             character_count=character_count,
             uploaded_at=stored_file.uploaded_at,
         )
