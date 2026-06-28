@@ -204,6 +204,7 @@
   color: var(--helper);
   font-size: 14px;
   line-height: 1;
+  outline: none;
 }
 
 .sessionMenuButton:hover,
