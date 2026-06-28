@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { MenuIcon } from "../components/MenuIcon";
 import styles from "./page.module.css";
 import {
@@ -59,10 +59,15 @@ export default function HomePage() {
   const [sessionKeyword, setSessionKeyword] = useState("");
   const [menuSessionId, setMenuSessionId] = useState("");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   useEffect(() => {
     if (!menuSessionId) return;
@@ -480,6 +485,7 @@ export default function HomePage() {
                     <p className={styles.messageText}>{message.content}</p>
                   </article>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
             ) : (
               <div className={styles.emptyHero}>

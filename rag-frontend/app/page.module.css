@@ -893,7 +893,7 @@
 .sourceMeta {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -913,6 +913,37 @@
 
 .sourcePath {
   overflow-wrap: anywhere;
+}
+
+.sourceScoreGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sourceScoreItem {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.sourceScoreLabel {
+  display: block;
+  color: var(--helper);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.sourceScoreValue {
+  display: block;
+  margin-top: 2px;
+  color: var(--title);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .retrievalTypeBadge {
