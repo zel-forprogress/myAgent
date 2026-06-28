@@ -67,7 +67,10 @@ export default function HomePage() {
 
   useEffect(() => {
     const el = chatCanvasRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }, [messages]);
 
   useEffect(() => {
