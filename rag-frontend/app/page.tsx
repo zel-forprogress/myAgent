@@ -63,6 +63,13 @@ export default function HomePage() {
     void bootstrap();
   }, []);
 
+  useEffect(() => {
+    if (!menuSessionId) return;
+    const close = () => setMenuSessionId("");
+    document.addEventListener("click", close, true);
+    return () => document.removeEventListener("click", close, true);
+  }, [menuSessionId]);
+
   const currentSession = useMemo(
     () => sessions.find((item) => item.id === currentSessionId) ?? null,
     [currentSessionId, sessions],
