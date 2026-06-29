@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { MenuIcon } from "../components/MenuIcon";
 import styles from "./page.module.css";
 import {
@@ -507,6 +508,8 @@ export default function HomePage() {
                     <div className={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</div>
                     {showLoading ? (
                       <p className={styles.loadingHint}>{getLoadingHint(result?.steps ?? [])}</p>
+                    ) : message.role === "assistant" ? (
+                      <div className={styles.messageText}><ReactMarkdown>{message.content}</ReactMarkdown></div>
                     ) : (
                       <p className={styles.messageText}>{message.content}</p>
                     )}
