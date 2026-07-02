@@ -7,6 +7,7 @@ import { MenuIcon, type MenuIconVariant } from "../../components/MenuIcon";
 import { Modal } from "../../components/Modal";
 import { Pagination } from "../../components/Pagination/Pagination";
 import { Select } from "../../components/Select";
+import { admin, common } from "../messages";
 import styles from "./page.module.css";
 import {
   apiBaseUrl,
@@ -32,6 +33,7 @@ import {
   fetchCurrentUser,
   getStoredAuth,
 } from "../../lib/auth";
+import { admin as adminMessages } from "../messages";
 
 type HealthResponse = {
   status: string;
@@ -353,7 +355,7 @@ export default function AdminPage() {
       try { await fetchStats(); } catch { /* stats fail silently */ }
       setAuthReady(true);
     } catch (error) {
-      handleAuthAwareError(error, "初始化后台失败。");
+      handleAuthAwareError(error, adminMessages.bootstrap);
     }
   }
 
@@ -392,7 +394,7 @@ export default function AdminPage() {
       throw new Error(
         "detail" in payload && typeof payload.detail === "string"
           ? payload.detail
-          : "获取知识库列表失败。",
+          : adminMessages.knowledgeBases.fetchListFailed,
       );
     }
 
@@ -411,7 +413,7 @@ export default function AdminPage() {
       throw new Error(
         "detail" in payload && typeof payload.detail === "string"
           ? payload.detail
-          : "获取会话列表失败。",
+          : adminMessages.sessions.fetchSessionsFailed,
       );
     }
 
@@ -436,7 +438,7 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "获取文档列表失败。",
+            : adminMessages.documents.fetchFailed,
         );
       }
 
@@ -446,10 +448,10 @@ export default function AdminPage() {
       setDocTotal(successPayload.total || 0);
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "获取文档列表失败。");
+        handleAuthAwareError(error, adminMessages.documents.fetchFailed);
         return;
       }
-      setDocError(error instanceof Error ? error.message : "获取文档列表失败。");
+      setDocError(error instanceof Error ? error.message : adminMessages.documents.fetchFailed);
     } finally {
       setDocLoading(false);
     }
@@ -468,7 +470,7 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "获取入库任务失败。",
+            : adminMessages.tasks.fetchFailed,
         );
       }
       const tasks = (payload as IngestionTaskListResponse).tasks;
@@ -518,7 +520,7 @@ export default function AdminPage() {
       throw new Error(
         "detail" in payload && typeof payload.detail === "string"
           ? payload.detail
-          : "获取会话消息失败。",
+          : adminMessages.sessions.fetchMessagesFailed,
       );
     }
 
@@ -543,12 +545,12 @@ export default function AdminPage() {
       }
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "获取会话列表失败。");
+        handleAuthAwareError(error, adminMessages.sessions.fetchSessionsFailed);
         return;
       }
       setSessionNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "获取会话列表失败。",
+        text: error instanceof Error ? error.message : adminMessages.sessions.fetchSessionsFailed,
       });
     } finally {
       setSessionLoading(false);
@@ -575,11 +577,11 @@ export default function AdminPage() {
     const trimmedCollection = newCollectionName.trim();
     const trimmedEmbedding = newEmbeddingModel.trim();
     if (!trimmedName || !trimmedCollection || !trimmedEmbedding) {
-      setKnowledgeBaseNotice({ type: "error", text: "请填写所有必填字段。" });
+      setKnowledgeBaseNotice({ type: "error", text: adminMessages.forms.requiredFields });
       return;
     }
     if (!/^[a-z0-9][a-z0-9_]*$/.test(trimmedCollection)) {
-      setKnowledgeBaseNotice({ type: "error", text: "Collection 名称只能包含小写字母、数字和下划线。" });
+      setKnowledgeBaseNotice({ type: "error", text: adminMessages.forms.collectionFormatError });
       return;
     }
 
@@ -604,7 +606,7 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "创建知识库失败。",
+            : adminMessages.knowledgeBases.createFailed,
         );
       }
 
@@ -620,12 +622,12 @@ export default function AdminPage() {
       });
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "创建知识库失败。");
+        handleAuthAwareError(error, adminMessages.knowledgeBases.createFailed);
         return;
       }
       setKnowledgeBaseNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "创建知识库失败。",
+        text: error instanceof Error ? error.message : adminMessages.knowledgeBases.createFailed,
       });
     } finally {
       setCreatingKnowledgeBase(false);
@@ -635,7 +637,7 @@ export default function AdminPage() {
   async function handleRenameKnowledgeBase(knowledgeBaseId: string) {
     const trimmedName = editKbName.trim();
     if (!trimmedName) {
-      setKnowledgeBaseNotice({ type: "error", text: "请输入知识库名称。" });
+      setKnowledgeBaseNotice({ type: "error", text: adminMessages.knowledgeBases.nameRequired });
       return;
     }
     setRenamingKb(true);
@@ -646,14 +648,14 @@ export default function AdminPage() {
         body: JSON.stringify({ name: trimmedName }),
       });
       const payload = (await response.json()) as KnowledgeBaseResponse | { detail?: string };
-      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "重命名失败。");
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.knowledgeBases.renameGenericFailed);
       setKnowledgeBases((prev) => prev.map((kb) => (kb.id === knowledgeBaseId ? (payload as KnowledgeBaseResponse) : kb)));
       setEditingKbId("");
       setEditKbName("");
-      setKnowledgeBaseNotice({ type: "success", text: "重命名成功。" });
+      setKnowledgeBaseNotice({ type: "success", text: adminMessages.knowledgeBases.renameSuccess });
     } catch (error) {
-      if (error instanceof AuthError) { handleAuthAwareError(error, "重命名失败。"); return; }
-      setKnowledgeBaseNotice({ type: "error", text: error instanceof Error ? error.message : "重命名失败。" });
+      if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.knowledgeBases.renameGenericFailed); return; }
+      setKnowledgeBaseNotice({ type: "error", text: error instanceof Error ? error.message : adminMessages.knowledgeBases.renameGenericFailed });
     } finally {
       setRenamingKb(false);
     }
@@ -676,7 +678,7 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "删除知识库失败。",
+            : adminMessages.knowledgeBases.deleteFailed,
         );
       }
 
@@ -689,12 +691,12 @@ export default function AdminPage() {
       });
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "删除知识库失败。");
+        handleAuthAwareError(error, adminMessages.knowledgeBases.deleteFailed);
         return;
       }
       setKnowledgeBaseNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "删除知识库失败。",
+        text: error instanceof Error ? error.message : adminMessages.knowledgeBases.deleteFailed,
       });
     } finally {
       setDeletingKnowledgeBaseId("");
@@ -703,13 +705,13 @@ export default function AdminPage() {
 
   async function handleUpload() {
     if (!selectedKnowledgeBase) {
-      setUploadNotice({ type: "error", text: "请先选择知识库。" });
+      setUploadNotice({ type: "error", text: adminMessages.upload.selectKbFirst });
       return;
     }
     if (!selectedFile) {
       setUploadNotice({
         type: "error",
-        text: "请先选择一个 .txt、.md、.pdf 或 .docx 文件。",
+        text: adminMessages.upload.fileTypeError,
       });
       return;
     }
@@ -734,14 +736,17 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "文件上传入库失败。",
+            : adminMessages.upload.uploadFailed,
         );
       }
 
       const successPayload = payload as IngestResponse;
       setUploadNotice({
         type: "success",
-        text: `${successPayload.knowledge_base_name} 已上传文档 ${successPayload.filename}（${successPayload.file_type}），可点击分块按钮进行处理。`,
+        text: adminMessages.upload.successTemplate
+          .replace("{kb_name}", successPayload.knowledge_base_name)
+          .replace("{filename}", successPayload.filename)
+          .replace("{file_type}", successPayload.file_type),
       });
       setSelectedFile(null);
       await loadDocuments(selectedKnowledgeBase.id);
@@ -749,12 +754,12 @@ export default function AdminPage() {
       await loadDocumentCounts(knowledgeBases);
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "文件上传入库失败。");
+        handleAuthAwareError(error, adminMessages.upload.uploadFailed);
         return;
       }
       setUploadNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "文件上传入库失败。",
+        text: error instanceof Error ? error.message : adminMessages.upload.uploadFailed,
       });
     } finally {
       setUploadLoading(false);
@@ -772,7 +777,7 @@ export default function AdminPage() {
         `${apiBaseUrl}/documents/chunks?knowledge_base_id=${encodeURIComponent(selectedKnowledgeBase.id)}&source=${encodeURIComponent(source)}`,
       );
       const payload = (await response.json()) as { chunks: ChunkItem[]; total: number } | { detail?: string };
-      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取分块失败。");
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.chunks.fetchFailed);
       setChunkItems((payload as { chunks: ChunkItem[] }).chunks);
     } catch {
       setChunkItems([]);
@@ -792,15 +797,15 @@ export default function AdminPage() {
         body: JSON.stringify({ source, knowledge_base_id: selectedKnowledgeBase.id }),
       });
       const payload = (await response.json()) as IngestResponse | { detail?: string };
-      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "分块失败。");
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.knowledgeBases.chunkFailed);
       const successPayload = payload as IngestResponse;
       setDeleteNotice({ type: "success", text: `分块完成：${successPayload.chunks} 个 chunk，跳过 ${successPayload.skipped} 个重复。` });
       await loadDocuments(selectedKnowledgeBase.id);
       await loadIngestionTasks(selectedKnowledgeBase.id);
       await loadDocumentCounts(knowledgeBases);
     } catch (error) {
-      if (error instanceof AuthError) { handleAuthAwareError(error, "分块失败。"); return; }
-      setDeleteNotice({ type: "error", text: error instanceof Error ? error.message : "分块失败。" });
+      if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.knowledgeBases.chunkFailed); return; }
+      setDeleteNotice({ type: "error", text: error instanceof Error ? error.message : adminMessages.knowledgeBases.chunkFailed });
     } finally {
       setChunkingSource("");
     }
@@ -831,25 +836,27 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "删除文档失败。",
+            : adminMessages.documents.deleteFailed,
         );
       }
 
       const successPayload = payload as DeleteDocumentResponse;
       setDeleteNotice({
         type: "success",
-        text: `${successPayload.knowledge_base_name} 中的文档已删除：${successPayload.source}`,
+        text: adminMessages.documents.deleteSuccessTemplate
+          .replace("{kb_name}", successPayload.knowledge_base_name)
+          .replace("{source}", successPayload.source),
       });
       await loadDocuments(selectedKnowledgeBase.id);
       await loadDocumentCounts(knowledgeBases);
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "删除文档失败。");
+        handleAuthAwareError(error, adminMessages.documents.deleteFailed);
         return;
       }
       setDeleteNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "删除文档失败。",
+        text: error instanceof Error ? error.message : adminMessages.documents.deleteFailed,
       });
     } finally {
       setDeletingSource("");
@@ -872,7 +879,7 @@ export default function AdminPage() {
         throw new Error(
           "detail" in payload && typeof payload.detail === "string"
             ? payload.detail
-            : "删除会话失败。",
+            : adminMessages.sessions.deleteSessionFailed,
         );
       }
 
@@ -883,12 +890,12 @@ export default function AdminPage() {
       await reloadSessions();
     } catch (error) {
       if (error instanceof AuthError) {
-        handleAuthAwareError(error, "删除会话失败。");
+        handleAuthAwareError(error, adminMessages.sessions.deleteSessionFailed);
         return;
       }
       setSessionNotice({
         type: "error",
-        text: error instanceof Error ? error.message : "删除会话失败。",
+        text: error instanceof Error ? error.message : adminMessages.sessions.deleteSessionFailed,
       });
     } finally {
       setDeletingSessionId("");
@@ -907,7 +914,7 @@ export default function AdminPage() {
     );
     const payload = (await response.json()) as { users: UserListItem[]; total: number } | { detail?: string };
     if (!response.ok) {
-      throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取用户列表失败。");
+      throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.users.fetchFailed);
     }
     const data = payload as { users: UserListItem[]; total: number };
     setUsers(data.users);
@@ -918,7 +925,7 @@ export default function AdminPage() {
     event.preventDefault();
     const trimmedName = newUsername.trim();
     if (!trimmedName || !newPassword) {
-      setUserNotice({ type: "error", text: "请填写用户名和密码。" });
+      setUserNotice({ type: "error", text: adminMessages.forms.credentialsRequired });
       return;
     }
     setCreatingUser(true);
@@ -931,37 +938,37 @@ export default function AdminPage() {
       });
       const payload = (await response.json()) as UserListItem | { detail?: string };
       if (!response.ok) {
-        throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "创建用户失败。");
+        throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.users.createFailed);
       }
       const created = payload as UserListItem;
-      setUserNotice({ type: "success", text: `用户 ${created.username} 已创建。` });
+      setUserNotice({ type: "success", text: adminMessages.users.createSuccessTemplate.replace("{username}", created.username) });
       setNewUsername("");
       setNewPassword("");
       setNewRole("user");
       await fetchUsers(userPage, USER_PAGE_SIZE);
     } catch (error) {
-      if (error instanceof AuthError) { handleAuthAwareError(error, "创建用户失败。"); return; }
-      setUserNotice({ type: "error", text: error instanceof Error ? error.message : "创建用户失败。" });
+      if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.users.createFailed); return; }
+      setUserNotice({ type: "error", text: error instanceof Error ? error.message : adminMessages.users.createFailed });
     } finally {
       setCreatingUser(false);
     }
   }
 
   async function handleDeleteUser(userId: string, username: string) {
-    if (!window.confirm(`确定要删除用户 ${username} 吗？`)) return;
+    if (!window.confirm(adminMessages.users.confirmDelete.replace("{username}", username))) return;
     setDeletingUserId(userId);
     setUserNotice(null);
     try {
       const response = await authFetch(`${apiBaseUrl}/admin/users/${userId}`, { method: "DELETE" });
       if (!response.ok) {
         const payload = (await response.json()) as { detail?: string };
-        throw new Error(payload.detail || "删除用户失败。");
+        throw new Error(payload.detail || adminMessages.users.deleteFailed);
       }
-      setUserNotice({ type: "success", text: `用户 ${username} 已删除。` });
+      setUserNotice({ type: "success", text: adminMessages.users.deleteSuccessTemplate.replace("{username}", username) });
       await fetchUsers(userPage, USER_PAGE_SIZE);
     } catch (error) {
-      if (error instanceof AuthError) { handleAuthAwareError(error, "删除用户失败。"); return; }
-      setUserNotice({ type: "error", text: error instanceof Error ? error.message : "删除用户失败。" });
+      if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.users.deleteFailed); return; }
+      setUserNotice({ type: "error", text: error instanceof Error ? error.message : adminMessages.users.deleteFailed });
     } finally {
       setDeletingUserId("");
     }
@@ -976,7 +983,7 @@ export default function AdminPage() {
     return (
       <main className={styles.page}>
         <section className={styles.card}>
-          <p className={styles.emptyState}>正在验证管理员身份...</p>
+          <p className={styles.emptyState}>{adminMessages.overview.loading}</p>
         </section>
       </main>
     );
@@ -1002,13 +1009,13 @@ export default function AdminPage() {
               setKnowledgeBaseQuery(event.target.value);
               setSearchOpen(true);
             }}
-            placeholder="筛选知识库..."
-            aria-label="筛选知识库"
+            placeholder={adminMessages.search.placeholder}
+            aria-label={adminMessages.search.ariaLabel}
           />
           {searchOpen && knowledgeBaseQuery.trim() ? (
             <div className={styles.searchMenu}>
               <div className={styles.searchGroup}>
-                <p className={styles.searchGroupLabel}>知识库</p>
+                <p className={styles.searchGroupLabel}>{adminMessages.search.groupKnowledgeBases}</p>
                 {matchingKnowledgeBases.map((item) => (
                   <button
                     key={item.id}
@@ -1030,12 +1037,12 @@ export default function AdminPage() {
                   </button>
                 ))}
                 {!matchingKnowledgeBases.length ? (
-                  <p className={styles.searchEmpty}>没有匹配的知识库</p>
+                  <p className={styles.searchEmpty}>{adminMessages.search.noMatchKnowledgeBases}</p>
                 ) : null}
               </div>
 
               <div className={styles.searchGroup}>
-                <p className={styles.searchGroupLabel}>文档</p>
+                <p className={styles.searchGroupLabel}>{adminMessages.search.groupDocuments}</p>
                 {searchDocuments.map(({ document, knowledgeBase }) => (
                   <button
                     key={`${knowledgeBase.id}:${document.source}`}
@@ -1056,10 +1063,10 @@ export default function AdminPage() {
                   </button>
                 ))}
                 {searchLoading ? (
-                  <p className={styles.searchEmpty}>正在搜索文档...</p>
+                  <p className={styles.searchEmpty}>{adminMessages.search.searching}</p>
                 ) : null}
                 {!searchLoading && !searchDocuments.length ? (
-                  <p className={styles.searchEmpty}>没有匹配的文档</p>
+                  <p className={styles.searchEmpty}>{adminMessages.search.noMatchDocuments}</p>
                 ) : null}
               </div>
             </div>
@@ -1067,7 +1074,7 @@ export default function AdminPage() {
         </div>
         <div className={styles.headerActions}>
           <Link className={styles.secondaryLink} href="/">
-            返回聊天
+            {adminMessages.sidebar.backToChat}
           </Link>
           <div className={styles.adminIdentity}>
             <span className={styles.adminAvatar}>
@@ -1075,7 +1082,7 @@ export default function AdminPage() {
             </span>
             <span>
               <span className={styles.adminUserName}>{currentUser?.username}</span>
-              <span className={styles.adminUserRole}>管理员</span>
+              <span className={styles.adminUserRole}>{adminMessages.sidebar.adminRole}</span>
             </span>
           </div>
         </div>
@@ -1085,12 +1092,12 @@ export default function AdminPage() {
         <div className={styles.brand}>
           <span className={styles.brandMark}>M</span>
           <span>
-            <strong>myAgent 管理后台</strong>
-            <small>Knowledge Console</small>
+            <strong>{adminMessages.brand.adminPanel}</strong>
+            <small>{adminMessages.brand.console}</small>
           </span>
         </div>
 
-        <p className={styles.navLabel}>导航</p>
+        <p className={styles.navLabel}>{adminMessages.sidebar.navLabel}</p>
         <nav className={styles.menuList}>
             {adminMenus.map((menu) => (
               <button
@@ -1118,10 +1125,10 @@ export default function AdminPage() {
         <div className={styles.sidebarFooter}>
           <div>
             <strong>{currentUser?.username}</strong>
-            <span>管理员账户</span>
+            <span>{adminMessages.sidebar.adminAccount}</span>
           </div>
           <button className={styles.sidebarLogout} onClick={handleLogout} type="button">
-            退出
+            {adminMessages.sidebar.logout}
           </button>
         </div>
       </aside>

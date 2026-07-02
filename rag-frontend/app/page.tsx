@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { MenuIcon } from "../components/MenuIcon";
+import { chat, common } from "./messages";
 import styles from "./page.module.css";
 import {
   apiBaseUrl,
@@ -26,9 +27,9 @@ import {
 } from "../lib/auth";
 
 const starterQuestions = [
-  "这个系统里谁负责控制流程走向？",
-  "LangGraph 在这个项目中起什么作用？",
-  "你好，你是谁？",
+  chat.starter[0],
+  chat.starter[1],
+  chat.starter[2],
 ];
 
 type StreamEvent = {
@@ -106,8 +107,8 @@ export default function HomePage() {
   );
 
   const selectedKnowledgeBaseSummary = useMemo(() => {
-    if (selectedKnowledgeBaseIds.length === 0) return "全部知识库";
-    if (selectedKnowledgeBases.length === 0) return "未匹配到知识库";
+    if (selectedKnowledgeBaseIds.length === 0) return chat.composer.allKb;
+    if (selectedKnowledgeBases.length === 0) return chat.composer.noMatchKb;
     return selectedKnowledgeBases.map((item) => item.name).join("、");
   }, [selectedKnowledgeBaseIds.length, selectedKnowledgeBases]);
 
@@ -151,7 +152,7 @@ export default function HomePage() {
         await selectSession(created.id, [created]);
       }
     } catch (bootstrapError) {
-      handleAuthAwareError(bootstrapError, "初始化聊天页失败，请检查后端服务。");
+      handleAuthAwareError(bootstrapError, chat.error.bootstrap);
     } finally {
       setBootLoading(false);
     }
@@ -165,28 +166,28 @@ export default function HomePage() {
   async function fetchKnowledgeBases() {
     const response = await authFetch(`${apiBaseUrl}/knowledge-bases`);
     const payload = (await response.json()) as KnowledgeBaseResponse[] | { detail?: string };
-    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取知识库列表失败。");
+    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.fetchKbFailed);
     return payload as KnowledgeBaseResponse[];
   }
 
   async function fetchSessions() {
     const response = await authFetch(`${apiBaseUrl}/sessions`);
     const payload = (await response.json()) as SessionListResponse | { detail?: string };
-    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取会话列表失败。");
+    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.fetchSessionsFailed);
     return (payload as SessionListResponse).sessions;
   }
 
   async function createSession() {
     const response = await authFetch(`${apiBaseUrl}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "" }) });
     const payload = (await response.json()) as SessionResponse | { detail?: string };
-    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "创建会话失败。");
+    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.createSessionFailed);
     return payload as SessionResponse;
   }
 
   async function fetchSessionMessages(sessionId: string) {
     const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}/messages`);
     const payload = (await response.json()) as SessionMessagesResponse | { detail?: string };
-    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "获取会话消息失败。");
+    if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.fetchMessagesFailed);
     return payload as SessionMessagesResponse;
   }
 
@@ -211,7 +212,7 @@ export default function HomePage() {
         setResult(null);
       }
     } catch (selectError) {
-      handleAuthAwareError(selectError, "切换会话失败。");
+      handleAuthAwareError(selectError, chat.api.switchSessionFailed);
     } finally {
       setSessionLoading(false);
     }
@@ -231,26 +232,26 @@ export default function HomePage() {
       setRenaming(false);
       setMenuSessionId("");
     } catch (createError) {
-      handleAuthAwareError(createError, "新建会话失败。");
+      handleAuthAwareError(createError, chat.api.newSessionFailed);
     }
   }
 
   async function handleRenameSession(sessionId: string = currentSessionId) {
     const trimmedTitle = renameTitle.trim();
-    if (!sessionId || !trimmedTitle) { setError("请输入会话标题。"); return; }
+    if (!sessionId || !trimmedTitle) { setError(chat.session.renameTitle); return; }
     setRenameLoading(true);
     setError("");
     try {
       const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: trimmedTitle }) });
       const payload = (await response.json()) as SessionResponse | { detail?: string };
-      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "重命名会话失败。");
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.renameSessionFailed);
       const updated = payload as SessionResponse;
       setSessions((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       if (updated.id === currentSessionId) setRenameTitle(updated.title);
       setRenaming(false);
       setMenuSessionId("");
     } catch (renameError) {
-      handleAuthAwareError(renameError, "重命名会话失败。");
+      handleAuthAwareError(renameError, chat.api.renameSessionFailed);
     } finally {
       setRenameLoading(false);
     }
@@ -263,7 +264,7 @@ export default function HomePage() {
     try {
       const response = await authFetch(`${apiBaseUrl}/sessions/${sessionId}`, { method: "DELETE" });
       const payload = (await response.json()) as DeleteSessionResponse | { detail?: string };
-      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : "删除会话失败。");
+      if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : chat.api.deleteSessionFailed);
       const nextSessions = sessions.filter((item) => item.id !== sessionId);
       setSessions(nextSessions);
       setMenuSessionId("");
@@ -272,7 +273,7 @@ export default function HomePage() {
         else { const created = await createSession(); setSessions([created]); await selectSession(created.id, [created]); }
       }
     } catch (deleteError) {
-      handleAuthAwareError(deleteError, "删除会话失败。");
+      handleAuthAwareError(deleteError, chat.api.deleteSessionFailed);
     } finally {
       setDeleteLoading(false);
     }
@@ -282,13 +283,13 @@ export default function HomePage() {
     event.preventDefault();
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
-    if (!currentSessionId) { setError("当前没有可用会话，请先新建会话。"); return; }
+    if (!currentSessionId) { setError(chat.error.noSession); return; }
     isUserScrolledUpRef.current = false;
     setLoading(true);
     setError("");
     try {
       const auth = getStoredAuth();
-      if (!auth?.token) throw new AuthError("登录状态已失效，请重新登录。");
+      if (!auth?.token) throw new AuthError(chat.error.authExpired);
       const tempUserId = Date.now();
       const tempAssistantId = tempUserId + 1;
       const userMessage = buildTempMessage(tempUserId, "user", trimmedQuestion);
@@ -340,7 +341,7 @@ export default function HomePage() {
             updateTempAssistantMessage(tempAssistantId, finalPayload.answer);
             setResult(finalPayload);
           } else if (eventPayload.type === "error") {
-            throw new Error(String(eventPayload.data.message ?? "流式回答失败。"));
+            throw new Error(String(eventPayload.data.message ?? chat.error.streamFailed));
           }
         }
       }
@@ -357,7 +358,7 @@ export default function HomePage() {
       if (submitError instanceof DOMException && submitError.name === "AbortError") {
         // User cancelled — silently handled
       } else {
-        handleAuthAwareError(submitError, "请求失败，请稍后重试。");
+        handleAuthAwareError(submitError, chat.error.requestFailed);
       }
     } finally {
       setLoading(false);
@@ -398,7 +399,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <p className={styles.navLabel}>导航</p>
+          <p className={styles.navLabel}>{chat.nav.label}</p>
           <div className={styles.menuList}>
             <button
               className={styles.menuItem}
@@ -406,12 +407,12 @@ export default function HomePage() {
               type="button"
             >
               <span className={styles.menuIcon}><MenuIcon variant="chat" /></span>
-              新建对话
+              {chat.nav.newChat}
             </button>
             {currentUser?.role === "admin" ? (
               <Link className={styles.menuItem} href="/admin">
                 <span className={styles.menuIcon}><MenuIcon variant="grid" /></span>
-                管理后台
+                {chat.nav.admin}
               </Link>
             ) : null}
           </div>
@@ -420,7 +421,7 @@ export default function HomePage() {
             <input
               className={styles.searchInput}
               onChange={(event) => setSessionKeyword(event.target.value)}
-              placeholder="搜索历史对话..."
+              placeholder={chat.search.placeholder}
               value={sessionKeyword}
             />
           </div>
@@ -434,7 +435,7 @@ export default function HomePage() {
                   <div className={active ? styles.sessionRowActive : styles.sessionRow} key={session.id} style={{ position: "relative" }}>
                     <button className={styles.sessionMain} onClick={() => void selectSession(session.id)} type="button">
                       <span className={styles.sessionTitle}>{session.title}</span>
-                      <span className={styles.sessionMeta}>{session.message_count} 条消息</span>
+                      <span className={styles.sessionMeta}>{session.message_count} {chat.session.messages}</span>
                     </button>
                     <button
                       className={menuOpen ? styles.sessionMenuButtonActive : styles.sessionMenuButton}
@@ -443,25 +444,25 @@ export default function HomePage() {
                     >...</button>
                     {menuOpen ? (
                       <div className={styles.sessionMenu}>
-                        <button className={styles.sessionMenuItem} onClick={() => void openRenameForSession(session)} type="button">重命名</button>
+                        <button className={styles.sessionMenuItem} onClick={() => void openRenameForSession(session)} type="button">{common.rename}</button>
                         <button className={styles.sessionMenuItemDanger} disabled={deleteLoading} onClick={() => void openDeleteForSession(session)} type="button">
-                          {deleteLoading && currentSessionId === session.id ? "删除中..." : "删除"}
+                          {deleteLoading && currentSessionId === session.id ? chat.session.deleting : common.delete}
                         </button>
                       </div>
                     ) : null}
                   </div>
                 );
               })}
-              {!filteredSessions.length ? <p className={styles.emptyState}>没有匹配的会话</p> : null}
+              {!filteredSessions.length ? <p className={styles.emptyState}>{chat.search.noMatch}</p> : null}
             </div>
           </div>
 
           <div className={styles.sidebarFooter}>
             <div className={styles.userInfo}>
-              <strong>{currentUser?.username || "当前用户"}</strong>
-              <span>{currentUser?.role === "admin" ? "管理员" : "普通用户"}</span>
+              <strong>{currentUser?.username || common.unknown}</strong>
+              <span>{currentUser?.role === "admin" ? chat.user.admin : chat.user.regular}</span>
             </div>
-            <button className={styles.sidebarLogout} onClick={handleLogout} type="button">退出</button>
+            <button className={styles.sidebarLogout} onClick={handleLogout} type="button">{chat.user.logout}</button>
           </div>
         </aside>
 
@@ -469,8 +470,8 @@ export default function HomePage() {
         <header className={styles.header}>
           <div className={styles.headerLeft}>
             <div>
-              <p className={styles.contentEyebrow}>首页 / {currentSession?.title || "新会话"}</p>
-              <h2 className={styles.contentTitle}>{currentSession?.title || "新会话"}</h2>
+              <p className={styles.contentEyebrow}>{chat.header.home} / {currentSession?.title || chat.header.newSession}</p>
+              <h2 className={styles.contentTitle}>{currentSession?.title || chat.header.newSession}</h2>
             </div>
           </div>
           <div className={styles.headerActions}>
@@ -489,15 +490,15 @@ export default function HomePage() {
         <section className={`${styles.workspace} ${inspectorOpen ? styles.workspaceWithInspector : ""}`}>
           {renaming ? (
             <div className={styles.renameBar}>
-              <input className={styles.renameInput} onChange={(event) => setRenameTitle(event.target.value)} placeholder="输入新的会话标题" value={renameTitle} />
-              <button className={styles.primaryAction} disabled={renameLoading} onClick={() => void handleRenameSession()} type="button">{renameLoading ? "保存中..." : "保存"}</button>
-              <button className={styles.secondaryButton} onClick={() => { setRenaming(false); setRenameTitle(currentSession?.title ?? ""); }} type="button">取消</button>
+              <input className={styles.renameInput} onChange={(event) => setRenameTitle(event.target.value)} placeholder={chat.session.renamePlaceholder} value={renameTitle} />
+              <button className={styles.primaryAction} disabled={renameLoading} onClick={() => void handleRenameSession()} type="button">{renameLoading ? common.saving : common.save}</button>
+              <button className={styles.secondaryButton} onClick={() => { setRenaming(false); setRenameTitle(currentSession?.title ?? ""); }} type="button">{common.cancel}</button>
             </div>
           ) : null}
 
           <div className={styles.chatCanvas} ref={chatCanvasRef}>
             {bootLoading || sessionLoading ? (
-              <div className={styles.emptyHero}><p className={styles.emptyState}>正在加载会话内容...</p></div>
+              <div className={styles.emptyHero}><p className={styles.emptyState}>{chat.empty.loading}</p></div>
             ) : messages.length > 0 ? (
               <div className={styles.messageList}>
                 {messages.map((message, idx) => {
@@ -505,7 +506,7 @@ export default function HomePage() {
                   const showLoading = isLastAssistant && loading && !message.content;
                   return (
                     <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
-                      <div className={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</div>
+                      <div className={styles.messageRole}>{message.role === "user" ? chat.role.user : chat.role.assistant}</div>
                       {showLoading ? (
                         <p className={styles.loadingHint}>{getLoadingHint(result?.steps ?? [])}</p>
                       ) : message.role === "assistant" ? (
@@ -519,9 +520,9 @@ export default function HomePage() {
               </div>
             ) : (
               <div className={styles.emptyHero}>
-                <div className={styles.heroBadge}>RAG 智能问答</div>
-                <h3 className={styles.heroTitle}>把问题变成清晰答案</h3>
-                <p className={styles.heroCopy}>结构化提问、知识检索与深度思考，一次对话给出可执行结果。</p>
+                <div className={styles.heroBadge}>{chat.empty.hero.badge}</div>
+                <h3 className={styles.heroTitle}>{chat.empty.hero.title}</h3>
+                <p className={styles.heroCopy}>{chat.empty.hero.copy}</p>
                 <div className={styles.heroQuickGrid}>
                   {starterQuestions.map((item) => (
                     <button key={item} className={styles.heroQuickCard} onClick={() => setQuestion(item)} type="button">{item}</button>
@@ -535,19 +536,19 @@ export default function HomePage() {
             <div className={styles.composerToolbar}>
               <div className={styles.kbSelectorWrap}>
                 <button aria-expanded={knowledgeBasePickerOpen} className={styles.kbSelectorButton} onClick={() => setKnowledgeBasePickerOpen((current) => !current)} type="button">
-                  <span className={styles.kbSelectorLabel}>{"知识库"}</span>
+                  <span className={styles.kbSelectorLabel}>{chat.composer.knowledgeBase}</span>
                   <span className={styles.kbSelectorValue}>{selectedKnowledgeBaseSummary}</span>
                 </button>
                 {knowledgeBasePickerOpen ? (
                   <div className={styles.kbSelectorPopover}>
                     <div className={styles.kbPopoverHeader}>
                       <div className={styles.filterHead}>
-                        <span className={styles.filterLabel}>{"知识库范围"}</span>
+                        <span className={styles.filterLabel}>{chat.composer.knowledgeBase}</span>
                         <span className={styles.filterSummary}>{selectedKnowledgeBaseSummary}</span>
                       </div>
                       <div className={styles.filterActions}>
-                        <button className={styles.smallGhostButton} onClick={() => setSelectedKnowledgeBaseIds([])} type="button">{"全部"}</button>
-                        <button className={styles.smallGhostButton} onClick={() => setSelectedKnowledgeBaseIds(knowledgeBases.map((item) => item.id))} type="button">{"全选"}</button>
+                        <button className={styles.smallGhostButton} onClick={() => setSelectedKnowledgeBaseIds([])} type="button">全部</button>
+                        <button className={styles.smallGhostButton} onClick={() => setSelectedKnowledgeBaseIds(knowledgeBases.map((item) => item.id))} type="button">全选</button>
                       </div>
                     </div>
                     <div className={styles.kbPills}>
@@ -577,20 +578,20 @@ export default function HomePage() {
                     if (form) form.requestSubmit();
                   }
                 }}
-                placeholder="输入你的问题... (Enter 发送，Shift+Enter 换行)"
+                placeholder={chat.composer.placeholder}
                 rows={2}
                 value={question}
               />
               <div className={styles.composerFooter}>
                 <div className={styles.composerMeta}>
-                  <label className={styles.topkLabel} htmlFor="top-k">检索片段数</label>
+                  <label className={styles.topkLabel} htmlFor="top-k">{chat.composer.topK}</label>
                   <input id="top-k" className={styles.range} max={8} min={1} onChange={(event) => setTopK(Number(event.target.value))} type="range" value={topK} />
                   <span className={styles.topkValue}>{topK}</span>
                 </div>
                 {loading ? (
-                  <button className={styles.sendButton} style={{ background: "var(--danger)" }} onClick={() => abortController?.abort()} type="button">停止</button>
+                  <button className={styles.sendButton} style={{ background: "var(--danger)" }} onClick={() => abortController?.abort()} type="button">{chat.composer.stop}</button>
                 ) : (
-                  <button className={styles.sendButton} disabled={bootLoading || sessionLoading} type="submit">发送</button>
+                  <button className={styles.sendButton} disabled={bootLoading || sessionLoading} type="submit">{chat.composer.send}</button>
                 )}
               </div>
             </form>
@@ -640,7 +641,7 @@ export default function HomePage() {
                 {result.sources.map((source, index) => (
                   <article className={styles.sourceCard} key={`${source.source}-${index}`} style={{ marginBottom: 8 }}>
                     <div className={styles.sourceMeta}>
-                      <span className={styles.sourcePath}>{source.source || "未知来源"}</span>
+                      <span className={styles.sourcePath}>{source.source || common.unknownSource}</span>
                       <span className={styles.sourceMetaActions}>
                         <RetrievalTypeBadge type={source.retrieval_type} />
                       </span>
@@ -685,16 +686,16 @@ function ScoreItem({ label, value }: { label: string; value?: number | null }) {
 }
 
 const STEP_LABELS: Record<string, string> = {
-  complete: "正在补全上下文...",
-  analyze: "正在分析问题...",
-  retrieve: "正在检索知识库...",
-  check: "正在检查相关性...",
-  rewrite: "正在改写问题...",
-  generate: "正在生成回答...",
+  complete: chat.loading.complete,
+  analyze: chat.loading.analyze,
+  retrieve: chat.loading.retrieve,
+  check: chat.loading.check,
+  rewrite: chat.loading.rewrite,
+  generate: chat.loading.generate,
 };
 
 function getLoadingHint(steps: string[]): string {
-  if (steps.length === 0) return "正在思考...";
+  if (steps.length === 0) return chat.loading.thinking;
   const last = steps[steps.length - 1];
   const key = Object.keys(STEP_LABELS).find((item) => last.includes(item));
   return key ? STEP_LABELS[key] : `正在执行 ${last}...`;
