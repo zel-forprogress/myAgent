@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_db, require_admin
@@ -68,9 +69,15 @@ def post_knowledge_base(
         return serialize_knowledge_base(knowledge_base)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        detail = "该 Collection 名称已被使用，请换一个名称。"
+        if "collection_name" in str(exc):
+            detail = f"Collection 名称 '{request.collection_name}' 已被使用，请换一个名称。"
+        raise HTTPException(status_code=409, detail=detail) from exc
     except Exception as exc:
         logger.exception("Create knowledge base failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="创建知识库失败，请稍后重试。") from exc
 
 
 @router.patch(
