@@ -703,7 +703,12 @@ def build_context(sources: List[SourceChunk]) -> str:
     )
 
 
-def generate_answer_with_context(question: str, sources: List[SourceChunk]) -> str:
+def generate_answer_with_context(
+    question: str,
+    sources: List[SourceChunk],
+    chat_history: str = "",
+    standalone_question: str = "",
+) -> str:
     context = build_context(sources)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -711,9 +716,16 @@ def generate_answer_with_context(question: str, sources: List[SourceChunk]) -> s
             (
                 "system",
                 "你是一个严谨的知识库问答助手。请只根据给定资料回答问题。"
+                "历史对话只用于理解用户当前表达，不得替代资料作为事实来源。"
                 "如果资料中没有答案，请直接说资料中没有提到。",
             ),
-            ("human", "资料:\n{context}\n\n问题: {question}"),
+            (
+                "human",
+                "历史对话:\n{chat_history}\n\n"
+                "资料:\n{context}\n\n"
+                "用户原始问题: {question}\n"
+                "补全后的问题: {standalone_question}",
+            ),
         ]
     )
 
@@ -722,6 +734,8 @@ def generate_answer_with_context(question: str, sources: List[SourceChunk]) -> s
 
     generation_input = {
         "question": question,
+        "standalone_question": standalone_question or question,
+        "chat_history": chat_history[:1000],
         "context": context,
         "source_count": len(sources),
     }
@@ -732,7 +746,14 @@ def generate_answer_with_context(question: str, sources: List[SourceChunk]) -> s
         model_parameters={"temperature": 0},
         metadata={"node": "generate_rag_answer"},
     ) as generation:
-        response = chain.invoke({"context": context, "question": question})
+        response = chain.invoke(
+            {
+                "chat_history": chat_history or "无",
+                "context": context,
+                "question": question,
+                "standalone_question": standalone_question or question,
+            }
+        )
         update_generation(
             generation,
             output=response.content,

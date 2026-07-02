@@ -54,6 +54,7 @@ def serialize_message(message: ChatMessage) -> MessageResponse:
         route=message.route or "",
         retrieval_quality=message.retrieval_quality or "",
         rewritten_question=message.rewritten_question or "",
+        standalone_question=message.standalone_question or "",
         source_count=message.source_count or 0,
         sources=[SourceChunk(**item) for item in raw_sources],
         steps=list(message.steps or []),

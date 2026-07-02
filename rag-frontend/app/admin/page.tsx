@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { MenuIcon, type MenuIconVariant } from "../../components/MenuIcon";
 import { Modal } from "../../components/Modal";
-import { Pagination } from "../../components/Pagination";
+import { Pagination } from "../../components/Pagination/Pagination";
 import { Select } from "../../components/Select";
 import styles from "./page.module.css";
 import {

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     langfuse_base_url: Optional[str] = None
     langfuse_timeout: int = 30
 
+    chat_history_recent_messages: int = 8
+    chat_memory_summary_enabled: bool = True
+    chat_memory_summary_start_messages: int = 16
+    chat_memory_summary_keep_messages: int = 8
+    chat_memory_summary_max_chars: int = 600
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

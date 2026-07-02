@@ -1,7 +1,9 @@
 from datetime import datetime
 
+from langchain_core.prompts import ChatPromptTemplate
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import ChatMessage, ChatSession, KnowledgeBase, User
 from app.schemas import SourceChunk
 
@@ -109,6 +111,7 @@ def add_assistant_message(
     rewritten_question: str,
     sources: list[SourceChunk],
     steps: list[str],
+    standalone_question: str = "",
 ) -> ChatMessage:
     message = ChatMessage(
         session_id=session.id,
@@ -117,6 +120,7 @@ def add_assistant_message(
         route=route,
         retrieval_quality=retrieval_quality,
         rewritten_question=rewritten_question,
+        standalone_question=standalone_question,
         source_count=len(sources),
         sources=[source.model_dump() for source in sources],
         steps=steps,
@@ -126,6 +130,7 @@ def add_assistant_message(
     db.add(session)
     db.commit()
     db.refresh(message)
+    compress_session_memory_if_needed(db, session)
     return message
 
 
@@ -136,3 +141,142 @@ def list_session_messages(db: Session, session_id: str) -> list[ChatMessage]:
         .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
         .all()
     )
+
+
+def list_recent_session_messages(
+    db: Session,
+    session_id: str,
+    limit: int | None = None,
+) -> list[ChatMessage]:
+    message_limit = limit or settings.chat_history_recent_messages
+    if message_limit <= 0:
+        return []
+
+    messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(message_limit)
+        .all()
+    )
+    return list(reversed(messages))
+
+
+def format_messages_for_memory(messages: list[ChatMessage]) -> str:
+    lines: list[str] = []
+    for message in messages:
+        content = (message.content or "").strip()
+        if not content:
+            continue
+        role = "用户" if message.role == "user" else "助手"
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+def build_chat_history_context(
+    session: ChatSession,
+    recent_messages: list[ChatMessage],
+) -> str:
+    parts: list[str] = []
+    if session.memory_summary:
+        parts.append(f"历史摘要:\n{session.memory_summary.strip()}")
+
+    recent_history = format_messages_for_memory(recent_messages)
+    if recent_history:
+        parts.append(f"最近对话:\n{recent_history}")
+
+    return "\n\n".join(parts).strip()
+
+
+def _messages_to_summarize(db: Session, session: ChatSession) -> list[ChatMessage]:
+    keep_messages = max(settings.chat_memory_summary_keep_messages, 0)
+    total_messages = (
+        db.query(ChatMessage).filter(ChatMessage.session_id == session.id).count()
+    )
+    if total_messages <= settings.chat_memory_summary_start_messages:
+        return []
+    if total_messages <= keep_messages:
+        return []
+
+    recent_messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(keep_messages)
+        .all()
+    )
+    cutoff_id = min(message.id for message in recent_messages) if recent_messages else None
+    if cutoff_id is None:
+        return []
+
+    query = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session.id,
+        ChatMessage.id < cutoff_id,
+    )
+    if session.memory_summary_last_message_id is not None:
+        query = query.filter(ChatMessage.id > session.memory_summary_last_message_id)
+
+    return query.order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc()).all()
+
+
+def summarize_conversation_messages(
+    messages: list[ChatMessage],
+    existing_summary: str | None,
+) -> str:
+    if not messages:
+        return existing_summary or ""
+
+    from app.services.rag_service import get_llm
+
+    history_text = format_messages_for_memory(messages)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是会话记忆摘要器，负责把历史对话压缩成给问答助手使用的上下文摘要。"
+                "只记录用户讨论过的话题、处理状态和明确约束，不要记录具体答案、长流程或详细规则。"
+                "摘要用于后续 RAG 检索和回答理解，不替代知识库事实。"
+                f"输出不超过 {settings.chat_memory_summary_max_chars} 个中文字符，只输出摘要本身。",
+            ),
+            (
+                "human",
+                "已有摘要:\n{existing_summary}\n\n"
+                "本次新增历史对话:\n{history_text}\n\n"
+                "请合并已有摘要和新增对话，去重后输出更新摘要。",
+            ),
+        ]
+    )
+    chain = prompt | get_llm()
+    response = chain.invoke(
+        {
+            "existing_summary": existing_summary or "无",
+            "history_text": history_text,
+        }
+    )
+    summary = str(response.content).strip()
+    if len(summary) > settings.chat_memory_summary_max_chars:
+        summary = summary[: settings.chat_memory_summary_max_chars].rstrip()
+    return summary
+
+
+def compress_session_memory_if_needed(db: Session, session: ChatSession) -> None:
+    if not settings.chat_memory_summary_enabled:
+        return
+
+    messages = _messages_to_summarize(db, session)
+    if not messages:
+        return
+
+    try:
+        summary = summarize_conversation_messages(messages, session.memory_summary)
+    except Exception:
+        return
+
+    if not summary:
+        return
+
+    session.memory_summary = summary
+    session.memory_summary_last_message_id = messages[-1].id
+    session.updated_at = datetime.utcnow()
+    db.add(session)
+    db.commit()

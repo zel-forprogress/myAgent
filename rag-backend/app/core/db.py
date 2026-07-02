@@ -64,6 +64,20 @@ def _run_schema_migrations() -> None:
                 column_name="knowledge_base_id",
                 column_sql="knowledge_base_id VARCHAR(36)",
             )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_sessions",
+                column_name="memory_summary",
+                column_sql="memory_summary TEXT",
+            )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_sessions",
+                column_name="memory_summary_last_message_id",
+                column_sql="memory_summary_last_message_id INTEGER",
+            )
         if "knowledge_base_documents" in table_names:
             _ensure_column(
                 connection,
@@ -99,6 +113,14 @@ def _run_schema_migrations() -> None:
                 table_name="knowledge_base_documents",
                 column_name="file_size",
                 column_sql="file_size BIGINT DEFAULT 0",
+            )
+        if "chat_messages" in table_names:
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_messages",
+                column_name="standalone_question",
+                column_sql="standalone_question TEXT",
             )
 
 

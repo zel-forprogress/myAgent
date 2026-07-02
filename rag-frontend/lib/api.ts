@@ -45,6 +45,7 @@ export type ChatResponse = {
   steps: string[];
   retrieval_quality: string;
   rewritten_question: string;
+  standalone_question: string;
 };
 
 export type SessionResponse = {
@@ -74,6 +75,7 @@ export type MessageResponse = {
   route: string;
   retrieval_quality: string;
   rewritten_question: string;
+  standalone_question: string;
   source_count: number;
   sources: SourceChunk[];
   steps: string[];

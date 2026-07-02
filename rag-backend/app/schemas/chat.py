@@ -30,6 +30,7 @@ class ChatResponse(BaseModel):
     steps: List[str] = []
     retrieval_quality: str = ""
     rewritten_question: str = ""
+    standalone_question: str = ""
 
 
 class MessageResponse(BaseModel):
@@ -40,6 +41,7 @@ class MessageResponse(BaseModel):
     route: str = ""
     retrieval_quality: str = ""
     rewritten_question: str = ""
+    standalone_question: str = ""
     source_count: int = 0
     sources: List[SourceChunk] = []
     steps: List[str] = []

@@ -5,6 +5,7 @@ import pytest
 from app.schemas import SourceChunk
 from app.services.graph_service import (
     append_step,
+    complete_question_with_history,
     extract_stream_text,
     is_direct_question,
     keyword_route,
@@ -30,6 +31,47 @@ class TestAppendStep:
         result = append_step(state, "b")
         assert state.get("steps") == ["a"]
         assert result == ["a", "b"]
+
+
+class TestCompleteQuestionWithHistory:
+    def test_no_history_uses_original_question(self):
+        state: ChatState = {
+            "question": "那它怎么部署？",
+            "chat_history": "",
+            "standalone_question": "",
+            "rewritten_question": "",
+            "top_k": 4,
+            "collection_names": [],
+            "route": "",
+            "retrieval_quality": "",
+            "sources": [],
+            "answer": "",
+            "steps": [],
+        }
+
+        result = complete_question_with_history(state)
+
+        assert result["standalone_question"] == "那它怎么部署？"
+        assert result["steps"] == ["complete_question_with_history"]
+
+    def test_direct_question_skips_completion(self):
+        state: ChatState = {
+            "question": "你好",
+            "chat_history": "用户: 这个项目怎么部署？",
+            "standalone_question": "",
+            "rewritten_question": "",
+            "top_k": 4,
+            "collection_names": [],
+            "route": "",
+            "retrieval_quality": "",
+            "sources": [],
+            "answer": "",
+            "steps": [],
+        }
+
+        result = complete_question_with_history(state)
+
+        assert result["standalone_question"] == "你好"
 
 
 class TestMaxSourceScore:

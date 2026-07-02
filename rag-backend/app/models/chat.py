@@ -28,6 +28,8 @@ class ChatSession(Base):
         nullable=True,
     )
     title: Mapped[str] = mapped_column(String(255), default="新会话")
+    memory_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    memory_summary_last_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -58,6 +60,7 @@ class ChatMessage(Base):
     route: Mapped[str | None] = mapped_column(String(50), nullable=True)
     retrieval_quality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     rewritten_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    standalone_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_count: Mapped[int] = mapped_column(Integer, default=0)
     sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
     steps: Mapped[list | None] = mapped_column(JSON, nullable=True)

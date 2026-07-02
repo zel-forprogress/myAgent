@@ -14,7 +14,9 @@ from app.schemas import ChatRequest, ChatResponse
 from app.services.chat_store import (
     add_assistant_message,
     add_user_message,
+    build_chat_history_context,
     get_chat_session,
+    list_recent_session_messages,
 )
 from app.services.graph_service import chat_with_graph, chat_with_graph_stream
 from app.services.knowledge_base_service import (
@@ -32,13 +34,15 @@ def run_chat(
     knowledge_base_names: list[str],
     question: str,
     top_k: int,
+    chat_history: str = "",
 ) -> ChatResponse:
     with start_chat_trace(question, top_k, knowledge_base_names) as trace:
-        answer, sources, route, steps, retrieval_quality, rewritten_question = (
+        answer, sources, route, steps, retrieval_quality, rewritten_question, standalone_question = (
             chat_with_graph(
                 collection_names=collection_names,
                 question=question,
                 top_k=top_k,
+                chat_history=chat_history,
             )
         )
         update_chat_trace(
@@ -57,6 +61,7 @@ def run_chat(
         steps=steps,
         retrieval_quality=retrieval_quality,
         rewritten_question=rewritten_question,
+        standalone_question=standalone_question,
     )
 
 
@@ -85,12 +90,15 @@ def chat_in_session(
         else:
             knowledge_bases = resolve_knowledge_bases(db, None)
 
+        recent_messages = list_recent_session_messages(db, session.id)
+        chat_history = build_chat_history_context(session, recent_messages)
         add_user_message(db, session, request.question)
         response = run_chat(
             [item.collection_name for item in knowledge_bases],
             [item.name for item in knowledge_bases],
             request.question,
             request.top_k,
+            chat_history,
         )
         add_assistant_message(
             db,
@@ -101,6 +109,7 @@ def chat_in_session(
             rewritten_question=response.rewritten_question,
             sources=response.sources,
             steps=response.steps,
+            standalone_question=response.standalone_question,
         )
         return response
     except HTTPException:
@@ -131,6 +140,8 @@ def chat_in_session_stream(
         else:
             knowledge_bases = resolve_knowledge_bases(db, None)
 
+        recent_messages = list_recent_session_messages(db, session.id)
+        chat_history = build_chat_history_context(session, recent_messages)
         add_user_message(db, session, request.question)
         collection_names = [item.collection_name for item in knowledge_bases]
         knowledge_base_names = [item.name for item in knowledge_bases]
@@ -162,11 +173,12 @@ def chat_in_session_stream(
                                 encode_stream_event(event["type"], event.get("data", {}))
                             )
 
-                        answer, sources, route, steps, retrieval_quality, rewritten_question = (
+                        answer, sources, route, steps, retrieval_quality, rewritten_question, standalone_question = (
                             chat_with_graph_stream(
                                 collection_names=collection_names,
                                 question=request.question,
                                 top_k=request.top_k,
+                                chat_history=chat_history,
                                 on_event=emit,
                             )
                         )
@@ -178,6 +190,7 @@ def chat_in_session_stream(
                             steps=steps,
                             retrieval_quality=retrieval_quality,
                             rewritten_question=rewritten_question,
+                            standalone_question=standalone_question,
                         )
                         final_holder["response"] = final_response
                         update_chat_trace(
@@ -216,6 +229,7 @@ def chat_in_session_stream(
                     rewritten_question=final_response.rewritten_question,
                     sources=final_response.sources,
                     steps=final_response.steps,
+                    standalone_question=final_response.standalone_question,
                 )
 
         return StreamingResponse(

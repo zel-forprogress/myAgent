@@ -24,6 +24,8 @@ MIN_RETRIEVAL_SCORE = 0.45
 
 class ChatState(TypedDict):
     question: str
+    chat_history: str
+    standalone_question: str
     rewritten_question: str
     top_k: int
     collection_names: List[str]
@@ -87,6 +89,8 @@ def state_snapshot_for_span(state: ChatState) -> dict[str, Any]:
     sources = state.get("sources", [])
     return {
         "question": state.get("question", ""),
+        "has_chat_history": bool(state.get("chat_history", "")),
+        "standalone_question": state.get("standalone_question", ""),
         "rewritten_question": state.get("rewritten_question", ""),
         "top_k": state.get("top_k", 4),
         "collection_names": state.get("collection_names", []),
@@ -153,8 +157,67 @@ def extract_stream_text(chunk: Any) -> str:
     return str(content or "")
 
 
+def retrieval_question(state: ChatState) -> str:
+    return state.get("rewritten_question") or state.get("standalone_question") or state["question"]
+
+
+def complete_question_with_history(state: ChatState) -> dict:
+    question = state["question"].strip()
+    chat_history = state.get("chat_history", "").strip()
+    if not question:
+        return {
+            "standalone_question": question,
+            "steps": append_step(state, "complete_question_with_history"),
+        }
+    if not chat_history or is_direct_question(question):
+        return {
+            "standalone_question": question,
+            "steps": append_step(state, "complete_question_with_history"),
+        }
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是对话上下文补全器。请根据历史对话，把用户当前问题改写成一个语义完整、"
+                "离开上下文也能理解的独立问题。不要回答问题，不要解释。"
+                "如果当前问题本身已经完整，请原样返回。不得编造历史中没有的实体或条件。",
+            ),
+            (
+                "human",
+                "历史对话:\n{chat_history}\n\n当前问题:\n{question}\n\n独立问题:",
+            ),
+        ]
+    )
+
+    try:
+        with start_generation(
+            "qwen_context_completion_call",
+            input_data={"question": question, "chat_history": shorten_text(chat_history)},
+            model=settings.chat_model,
+            model_parameters={"temperature": 0},
+            metadata={"node": "complete_question_with_history"},
+        ) as generation:
+            response = (prompt | get_llm()).invoke(
+                {"chat_history": chat_history, "question": question}
+            )
+            update_generation(
+                generation,
+                output=response.content,
+                usage_details=extract_usage_details(response),
+            )
+        standalone_question = str(response.content).strip() or question
+    except Exception:
+        standalone_question = question
+
+    return {
+        "standalone_question": standalone_question,
+        "steps": append_step(state, "complete_question_with_history"),
+    }
+
+
 def analyze_question(state: ChatState) -> dict:
-    question = state["question"]
+    question = state.get("standalone_question") or state["question"]
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -204,7 +267,7 @@ def route_question(state: ChatState) -> str:
 def retrieve(state: ChatState) -> dict:
     sources = retrieve_sources_multi(
         collection_names=state["collection_names"],
-        question=state["question"],
+        question=retrieval_question(state),
         top_k=state["top_k"],
     )
     return {"sources": sources, "steps": append_step(state, "retrieve")}
@@ -225,6 +288,7 @@ def route_retrieval_quality(state: ChatState) -> str:
 
 
 def rewrite_question(state: ChatState) -> dict:
+    base_question = state.get("standalone_question") or state["question"]
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -248,7 +312,7 @@ def rewrite_question(state: ChatState) -> dict:
             model_parameters={"temperature": 0},
             metadata={"node": "rewrite_question"},
         ) as generation:
-            response = (prompt | get_llm()).invoke({"question": state["question"]})
+            response = (prompt | get_llm()).invoke({"question": base_question})
             update_generation(
                 generation,
                 output=response.content,
@@ -256,10 +320,10 @@ def rewrite_question(state: ChatState) -> dict:
             )
         rewritten_question = response.content.strip()
     except Exception:
-        rewritten_question = state["question"]
+        rewritten_question = base_question
 
     if not rewritten_question:
-        rewritten_question = state["question"]
+        rewritten_question = base_question
 
     return {
         "rewritten_question": rewritten_question,
@@ -295,6 +359,8 @@ def generate_rag_answer(state: ChatState) -> dict:
     answer = generate_answer_with_context(
         question=state["question"],
         sources=state.get("sources", []),
+        chat_history=state.get("chat_history", ""),
+        standalone_question=state.get("standalone_question", ""),
     )
     return {"answer": answer, "steps": append_step(state, "generate_rag_answer")}
 
@@ -309,8 +375,11 @@ def generate_no_context_answer(state: ChatState) -> dict:
 def generate_direct_answer(state: ChatState) -> dict:
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", "你是一个简洁友好的助手。当前问题不需要查询知识库，请直接回答。"),
-            ("human", "{question}"),
+            (
+                "system",
+                "你是一个简洁友好的助手。当前问题不需要查询知识库，请结合必要的历史对话直接回答。",
+            ),
+            ("human", "历史对话:\n{chat_history}\n\n当前问题:\n{question}"),
         ]
     )
     chain = prompt | get_llm()
@@ -321,7 +390,12 @@ def generate_direct_answer(state: ChatState) -> dict:
         model_parameters={"temperature": 0},
         metadata={"node": "generate_direct_answer"},
     ) as generation:
-        response = chain.invoke({"question": state["question"]})
+        response = chain.invoke(
+            {
+                "chat_history": state.get("chat_history", "") or "无",
+                "question": state["question"],
+            }
+        )
         update_generation(
             generation,
             output=response.content,
@@ -347,6 +421,7 @@ def stream_rag_answer(
             (
                 "system",
                 "你是一个严谨的知识库问答助手。请只根据给定资料回答问题。"
+                "历史对话只用于理解用户当前表达，不得替代资料作为事实来源。"
                 "如果资料中没有答案，请直接说资料中没有提到。",
             ),
             ("human", "资料:\n{context}\n\n问题: {question}"),
@@ -367,7 +442,16 @@ def stream_rag_answer(
         model_parameters={"temperature": 0},
         metadata={"node": "generate_rag_answer"},
     ) as generation:
-        for chunk in chain.stream({"context": context, "question": state["question"]}):
+        for chunk in chain.stream(
+            {
+                "context": context,
+                "question": (
+                    f"历史对话:\n{state.get('chat_history', '') or '无'}\n\n"
+                    f"用户原始问题: {state['question']}\n"
+                    f"补全后的问题: {state.get('standalone_question') or state['question']}"
+                ),
+            }
+        ):
             text = extract_stream_text(chunk)
             if not text:
                 continue
@@ -386,8 +470,11 @@ def stream_direct_answer(
 ) -> dict:
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", "你是一个简洁友好的助手。当前问题不需要查询知识库，请直接回答。"),
-            ("human", "{question}"),
+            (
+                "system",
+                "你是一个简洁友好的助手。当前问题不需要查询知识库，请结合必要的历史对话直接回答。",
+            ),
+            ("human", "历史对话:\n{chat_history}\n\n当前问题:\n{question}"),
         ]
     )
     chain = prompt | get_llm()
@@ -400,7 +487,12 @@ def stream_direct_answer(
         model_parameters={"temperature": 0},
         metadata={"node": "generate_direct_answer"},
     ) as generation:
-        for chunk in chain.stream({"question": state["question"]}):
+        for chunk in chain.stream(
+            {
+                "chat_history": state.get("chat_history", "") or "无",
+                "question": state["question"],
+            }
+        ):
             text = extract_stream_text(chunk)
             if not text:
                 continue
@@ -422,10 +514,13 @@ def chat_with_graph_stream(
     collection_names: List[str],
     question: str,
     top_k: int,
+    chat_history: str,
     on_event: Callable[[dict[str, Any]], None],
-) -> tuple[str, List[SourceChunk], str, List[str], str, str]:
+) -> tuple[str, List[SourceChunk], str, List[str], str, str, str]:
     state: ChatState = {
         "question": question,
+        "chat_history": chat_history,
+        "standalone_question": question,
         "rewritten_question": "",
         "top_k": top_k,
         "collection_names": collection_names,
@@ -473,7 +568,17 @@ def chat_with_graph_stream(
                     },
                 }
             )
+        if name == "complete_question_with_history" and state.get("standalone_question"):
+            on_event(
+                {
+                    "type": "meta",
+                    "data": {
+                        "standalone_question": state.get("standalone_question", ""),
+                    },
+                }
+            )
 
+    run_regular_node("complete_question_with_history", complete_question_with_history)
     run_regular_node("analyze_question", analyze_question)
 
     if state["route"] == "direct":
@@ -527,11 +632,16 @@ def chat_with_graph_stream(
         state.get("steps", []),
         state.get("retrieval_quality", ""),
         state.get("rewritten_question", ""),
+        state.get("standalone_question", ""),
     )
 
 
 def build_chat_graph():
     graph = StateGraph(ChatState)
+    graph.add_node(
+        "complete_question_with_history",
+        traced_node("complete_question_with_history", complete_question_with_history),
+    )
     graph.add_node("analyze_question", traced_node("analyze_question", analyze_question))
     graph.add_node("retrieve", traced_node("retrieve", retrieve))
     graph.add_node(
@@ -554,7 +664,8 @@ def build_chat_graph():
         traced_node("generate_direct_answer", generate_direct_answer),
     )
 
-    graph.add_edge(START, "analyze_question")
+    graph.add_edge(START, "complete_question_with_history")
+    graph.add_edge("complete_question_with_history", "analyze_question")
     graph.add_conditional_edges(
         "analyze_question",
         route_question,
@@ -586,10 +697,13 @@ def chat_with_graph(
     collection_names: List[str],
     question: str,
     top_k: int = 4,
-) -> tuple[str, List[SourceChunk], str, List[str], str, str]:
+    chat_history: str = "",
+) -> tuple[str, List[SourceChunk], str, List[str], str, str, str]:
     result = chat_graph.invoke(
         {
             "question": question,
+            "chat_history": chat_history,
+            "standalone_question": question,
             "rewritten_question": "",
             "top_k": top_k,
             "collection_names": collection_names,
@@ -607,4 +721,5 @@ def chat_with_graph(
         result.get("steps", []),
         result.get("retrieval_quality", ""),
         result.get("rewritten_question", ""),
+        result.get("standalone_question", ""),
     )

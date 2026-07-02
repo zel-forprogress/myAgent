@@ -124,7 +124,7 @@ export default function HomePage() {
   // ========================== Logic (unchanged) ==========================
 
   function buildTempMessage(id: number, role: "user" | "assistant", content: string): MessageResponse {
-    return { id, session_id: currentSessionId, role, content, route: "", retrieval_quality: "", rewritten_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
+    return { id, session_id: currentSessionId, role, content, route: "", retrieval_quality: "", rewritten_question: "", standalone_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
   }
 
   function updateTempAssistantMessage(tempId: number, content: string) {
@@ -206,7 +206,7 @@ export default function HomePage() {
       setSelectedKnowledgeBaseIds(chosenIds);
       const latestAssistant = [...payload.messages].reverse().find((item) => item.role === "assistant");
       if (latestAssistant) {
-        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question });
+        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question, standalone_question: latestAssistant.standalone_question });
       } else {
         setResult(null);
       }
@@ -294,7 +294,7 @@ export default function HomePage() {
       const userMessage = buildTempMessage(tempUserId, "user", trimmedQuestion);
       const assistantMessage = buildTempMessage(tempAssistantId, "assistant", "");
       setMessages((current) => [...current, userMessage, assistantMessage]);
-      setResult({ answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" });
+      setResult({ answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" });
       setQuestion("");
       const controller = new AbortController();
       setAbortController(controller);
@@ -322,18 +322,18 @@ export default function HomePage() {
           const eventPayload = JSON.parse(line) as StreamEvent;
           if (eventPayload.type === "step") {
             const step = String(eventPayload.data.step ?? "");
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" }; return { ...base, answer: answerBuffer, route: String(eventPayload.data.route ?? "") || base.route, retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality, steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps }; });
+            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, route: String(eventPayload.data.route ?? "") || base.route, retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality, steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps }; });
           } else if (eventPayload.type === "sources") {
             const nextSources = Array.isArray(eventPayload.data.sources) ? (eventPayload.data.sources as ChatResponse["sources"]) : [];
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" }; return { ...base, answer: answerBuffer, sources: nextSources }; });
+            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, sources: nextSources }; });
           } else if (eventPayload.type === "meta") {
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" }; return { ...base, answer: answerBuffer, rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question }; });
+            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question, standalone_question: String(eventPayload.data.standalone_question ?? "") || base.standalone_question }; });
           } else if (eventPayload.type === "token") {
             const content = String(eventPayload.data.content ?? "");
             if (!content) continue;
             answerBuffer += content;
             updateTempAssistantMessage(tempAssistantId, answerBuffer);
-            setResult((current) => { const base = current ?? { answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "" }; return { ...base, answer: answerBuffer }; });
+            setResult((current) => { const base = current ?? { answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer }; });
           } else if (eventPayload.type === "final") {
             const finalPayload = eventPayload.data as unknown as ChatResponse;
             answerBuffer = finalPayload.answer;
@@ -622,6 +622,12 @@ export default function HomePage() {
             ) : (<p className={styles.emptyState}>还没有执行路径。</p>)}
           </section>
           <section className={styles.detailCard}>
+            <h4 className={styles.detailCardTitle}>上下文补全问题</h4>
+            {result?.standalone_question ? (
+              <p className={styles.rewrittenQuestion}>{result.standalone_question}</p>
+            ) : (<p className={styles.emptyState}>本次没有生成上下文补全问题。</p>)}
+          </section>
+          <section className={styles.detailCard}>
             <h4 className={styles.detailCardTitle}>改写问题</h4>
             {result?.rewritten_question ? (
               <p className={styles.rewrittenQuestion}>{result.rewritten_question}</p>
@@ -679,6 +685,7 @@ function ScoreItem({ label, value }: { label: string; value?: number | null }) {
 }
 
 const STEP_LABELS: Record<string, string> = {
+  complete: "正在补全上下文...",
   analyze: "正在分析问题...",
   retrieve: "正在检索知识库...",
   check: "正在检查相关性...",
@@ -689,7 +696,8 @@ const STEP_LABELS: Record<string, string> = {
 function getLoadingHint(steps: string[]): string {
   if (steps.length === 0) return "正在思考...";
   const last = steps[steps.length - 1];
-  return STEP_LABELS[last] ?? `正在执行 ${last}...`;
+  const key = Object.keys(STEP_LABELS).find((item) => last.includes(item));
+  return key ? STEP_LABELS[key] : `正在执行 ${last}...`;
 }
 
 const RETRIEVAL_TYPE_MAP: Record<string, { label: string; className: string }> = {
