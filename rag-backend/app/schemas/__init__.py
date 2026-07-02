@@ -16,6 +16,9 @@ from app.schemas.document import (
     DocumentsResponse,
     IngestRequest,
     IngestResponse,
+    IngestionTaskListResponse,
+    IngestionTaskLogResponse,
+    IngestionTaskResponse,
 )
 from app.schemas.knowledge_base import (
     DeleteKnowledgeBaseResponse,
@@ -45,6 +48,9 @@ __all__ = [
     "DocumentsResponse",
     "IngestRequest",
     "IngestResponse",
+    "IngestionTaskListResponse",
+    "IngestionTaskLogResponse",
+    "IngestionTaskResponse",
     "KnowledgeBaseCreateRequest",
     "KnowledgeBaseRenameRequest",
     "KnowledgeBaseResponse",

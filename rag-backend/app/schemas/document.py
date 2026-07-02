@@ -27,6 +27,7 @@ class IngestResponse(BaseModel):
     storage_object_key: str | None = None
     content_type: str | None = None
     file_size: int = 0
+    task_id: str | None = None
 
 
 class DocumentInfo(BaseModel):
@@ -67,3 +68,41 @@ class DeleteDocumentResponse(BaseModel):
     knowledge_base_id: str
     knowledge_base_name: str
     collection: str
+
+
+class IngestionTaskLogResponse(BaseModel):
+    id: int
+    task_id: str
+    node_name: str
+    status: str
+    message: str = ""
+    details: dict | None = None
+    error: str | None = None
+    duration_ms: int = 0
+    started_at: str
+    finished_at: str | None = None
+
+
+class IngestionTaskResponse(BaseModel):
+    id: str
+    knowledge_base_id: str
+    knowledge_base_name: str
+    filename: str
+    source: str
+    task_type: str
+    status: str
+    current_node: str | None = None
+    message: str = ""
+    chunks: int = 0
+    skipped: int = 0
+    error: str | None = None
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    updated_at: str
+    logs: list[IngestionTaskLogResponse] = []
+
+
+class IngestionTaskListResponse(BaseModel):
+    tasks: list[IngestionTaskResponse]
+    total: int = 0
