@@ -16,6 +16,8 @@ import {
   DocumentInfo,
   DocumentsResponse,
   IngestResponse,
+  IngestionTaskListResponse,
+  IngestionTaskResponse,
   KnowledgeBaseResponse,
   MessageResponse,
   SessionListResponse,
@@ -110,6 +112,9 @@ export default function AdminPage() {
   const [docLoading, setDocLoading] = useState(false);
   const [docPage, setDocPage] = useState(1);
   const [docTotal, setDocTotal] = useState(0);
+  const [ingestionTasks, setIngestionTasks] = useState<IngestionTaskResponse[]>([]);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
   const DOC_PAGE_SIZE = 15;
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [sessionPage, setSessionPage] = useState(1);
@@ -177,6 +182,11 @@ export default function AdminPage() {
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) ?? null,
     [selectedSessionId, sessions],
+  );
+
+  const selectedTask = useMemo(
+    () => ingestionTasks.find((item) => item.id === selectedTaskId) ?? ingestionTasks[0] ?? null,
+    [ingestionTasks, selectedTaskId],
   );
 
   const matchingKnowledgeBases = useMemo(() => {
@@ -249,6 +259,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (authReady && selectedKnowledgeBaseId) {
       void loadDocuments(selectedKnowledgeBaseId);
+      void loadIngestionTasks(selectedKnowledgeBaseId);
     }
   }, [authReady, selectedKnowledgeBaseId, docPage]);
 
@@ -441,6 +452,37 @@ export default function AdminPage() {
       setDocError(error instanceof Error ? error.message : "获取文档列表失败。");
     } finally {
       setDocLoading(false);
+    }
+  }
+
+  async function loadIngestionTasks(knowledgeBaseId: string) {
+    setTaskLoading(true);
+    try {
+      const response = await authFetch(
+        `${apiBaseUrl}/ingestion/tasks?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}&limit=20`,
+      );
+      const payload = (await response.json()) as
+        | IngestionTaskListResponse
+        | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "获取入库任务失败。",
+        );
+      }
+      const tasks = (payload as IngestionTaskListResponse).tasks;
+      setIngestionTasks(tasks);
+      setSelectedTaskId((current) =>
+        current && tasks.some((item) => item.id === current)
+          ? current
+          : tasks[0]?.id || "",
+      );
+    } catch {
+      setIngestionTasks([]);
+      setSelectedTaskId("");
+    } finally {
+      setTaskLoading(false);
     }
   }
 
@@ -703,6 +745,7 @@ export default function AdminPage() {
       });
       setSelectedFile(null);
       await loadDocuments(selectedKnowledgeBase.id);
+      await loadIngestionTasks(selectedKnowledgeBase.id);
       await loadDocumentCounts(knowledgeBases);
     } catch (error) {
       if (error instanceof AuthError) {
@@ -753,6 +796,7 @@ export default function AdminPage() {
       const successPayload = payload as IngestResponse;
       setDeleteNotice({ type: "success", text: `分块完成：${successPayload.chunks} 个 chunk，跳过 ${successPayload.skipped} 个重复。` });
       await loadDocuments(selectedKnowledgeBase.id);
+      await loadIngestionTasks(selectedKnowledgeBase.id);
       await loadDocumentCounts(knowledgeBases);
     } catch (error) {
       if (error instanceof AuthError) { handleAuthAwareError(error, "分块失败。"); return; }
@@ -1287,6 +1331,89 @@ export default function AdminPage() {
                   onPageChange={setDocPage}
                 />
                 {deleteNotice ? <NoticeBox notice={deleteNotice} /> : null}
+
+                <div className={styles.statusList}>
+                  <div className={styles.cardHeader} style={{ borderBottom: "none", minHeight: 48 }}>
+                    <div>
+                      <h3 className={styles.cardTitle}>最近入库任务</h3>
+                      <p className={styles.cardSubtitle}>查看上传、分块和向量入库的节点执行日志</p>
+                    </div>
+                    <button
+                      className={styles.refreshButton}
+                      disabled={taskLoading || !selectedKnowledgeBase}
+                      onClick={() => selectedKnowledgeBase && void loadIngestionTasks(selectedKnowledgeBase.id)}
+                      style={{ marginTop: 0 }}
+                      type="button"
+                    >
+                      {taskLoading ? "刷新中..." : "刷新任务"}
+                    </button>
+                  </div>
+
+                  {ingestionTasks.length ? (
+                    <div className={styles.sessionLayout} style={{ marginTop: 8 }}>
+                      <div className={styles.sessionTableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>任务</th>
+                              <th>类型</th>
+                              <th>状态</th>
+                              <th>Chunks</th>
+                              <th>创建时间</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ingestionTasks.map((task) => (
+                              <tr key={task.id} className={task.id === selectedTask?.id ? styles.activeRow : ""}>
+                                <td>
+                                  <button className={styles.sessionSelectButton} onClick={() => setSelectedTaskId(task.id)} type="button">
+                                    {task.filename || task.source || task.id}
+                                  </button>
+                                </td>
+                                <td>{task.task_type}</td>
+                                <td><span className={styles.statusBadge}>{formatTaskStatus(task.status)}</span></td>
+                                <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
+                                <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className={styles.messageViewer}>
+                        <h3 className={styles.viewerTitle}>{selectedTask ? `${selectedTask.filename || selectedTask.source} 的节点日志` : "节点日志"}</h3>
+                        {selectedTask ? (
+                          <div className={styles.messageList}>
+                            <div className={styles.messageMeta}>
+                              <span>状态：{formatTaskStatus(selectedTask.status)}</span>
+                              <span>当前节点：{selectedTask.current_node || "-"}</span>
+                              <span>消息：{selectedTask.message || "-"}</span>
+                            </div>
+                            {selectedTask.logs.map((log) => (
+                              <article key={log.id} className={styles.messageCard}>
+                                <div className={styles.messageCardHeader}>
+                                  <strong>{log.node_name}</strong>
+                                  <span>{formatTaskStatus(log.status)} · {log.duration_ms}ms</span>
+                                </div>
+                                <p className={styles.messageContent}>{log.message || "-"}</p>
+                                {log.error ? <p className={styles.noticeError} style={{ marginTop: 8 }}>{log.error}</p> : null}
+                                {log.details ? (
+                                  <pre style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, color: "#59657a" }}>
+                                    {JSON.stringify(log.details, null, 2)}
+                                  </pre>
+                                ) : null}
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className={styles.emptyState}>选择一个任务后，这里会显示节点日志。</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={styles.emptyState}>当前知识库还没有入库任务。</p>
+                  )}
+                </div>
               </section>
             ) : (
             <>
@@ -1732,5 +1859,17 @@ function NoticeBox({ notice }: { notice: Notice }) {
     >
       {notice.text}
     </div>
+  );
+}
+
+function formatTaskStatus(status: string) {
+  return (
+    {
+      pending: "待执行",
+      running: "执行中",
+      success: "成功",
+      failed: "失败",
+      skipped: "跳过",
+    }[status] || status
   );
 }

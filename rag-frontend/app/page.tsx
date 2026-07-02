@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Message, MessageList } from "@chatscope/chat-ui-kit-react";
 import { MenuIcon } from "../components/MenuIcon";
 import styles from "./page.module.css";
 import {
@@ -61,10 +60,33 @@ export default function HomePage() {
   const [sessionKeyword, setSessionKeyword] = useState("");
   const [menuSessionId, setMenuSessionId] = useState("");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const chatCanvasRef = useRef<HTMLDivElement | null>(null);
+  const isUserScrolledUpRef = useRef(false);
 
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  // 监听用户手动滚动：如果在底部附近则允许自动滚动，否则禁止
+  useEffect(() => {
+    const el = chatCanvasRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      isUserScrolledUpRef.current = distanceFromBottom > 100;
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isUserScrolledUpRef.current) return;
+    const el = chatCanvasRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (!menuSessionId) return;
@@ -169,6 +191,7 @@ export default function HomePage() {
   }
 
   async function selectSession(sessionId: string, currentSessions: SessionResponse[] = sessions) {
+    isUserScrolledUpRef.current = false;
     setSessionLoading(true);
     setError("");
     try {
@@ -260,6 +283,7 @@ export default function HomePage() {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
     if (!currentSessionId) { setError("当前没有可用会话，请先新建会话。"); return; }
+    isUserScrolledUpRef.current = false;
     setLoading(true);
     setError("");
     try {
@@ -471,29 +495,28 @@ export default function HomePage() {
             </div>
           ) : null}
 
-          <div className={styles.chatCanvas}>
+          <div className={styles.chatCanvas} ref={chatCanvasRef}>
             {bootLoading || sessionLoading ? (
               <div className={styles.emptyHero}><p className={styles.emptyState}>正在加载会话内容...</p></div>
             ) : messages.length > 0 ? (
-              <MessageList autoScrollToBottom={true} autoScrollToBottomOnMount={true}>
+              <div className={styles.messageList}>
                 {messages.map((message, idx) => {
                   const isLastAssistant = message.role === "assistant" && idx === messages.length - 1;
                   const showLoading = isLastAssistant && loading && !message.content;
-                  const direction = message.role === "user" ? 1 : 0;
-                  const sender = message.role === "user" ? "你" : "Agent";
                   return (
-                    <Message key={message.id} model={{ direction, sender, position: 0 }} type="custom">
+                    <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
+                      <div className={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</div>
                       {showLoading ? (
-                        <span className={styles.loadingHint}>{getLoadingHint(result?.steps ?? [])}</span>
+                        <p className={styles.loadingHint}>{getLoadingHint(result?.steps ?? [])}</p>
                       ) : message.role === "assistant" ? (
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                        <div className={styles.messageText}><ReactMarkdown>{message.content}</ReactMarkdown></div>
                       ) : (
-                        message.content
+                        <p className={styles.messageText}>{message.content}</p>
                       )}
-                    </Message>
+                    </article>
                   );
                 })}
-              </MessageList>
+              </div>
             ) : (
               <div className={styles.emptyHero}>
                 <div className={styles.heroBadge}>RAG 智能问答</div>

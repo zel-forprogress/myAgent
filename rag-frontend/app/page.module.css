@@ -464,96 +464,102 @@
   background: #f8f7ff;
 }
 
-/* ===== Messages (chat-ui-kit overrides) ===== */
-
-/* Message list scroll container */
-:global(.cs-message-list) {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 14px !important;
-  padding: 0 !important;
-  height: 100% !important;
+/* ===== Messages ===== */
+.messageList {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
 }
 
-/* Message bubble base */
-:global(.cs-message) {
-  padding: 14px 18px !important;
-  border-radius: 8px !important;
-  line-height: 1.75 !important;
-  font-size: 14px !important;
-  max-width: min(760px, 88%) !important;
+.userMessage,
+.assistantMessage {
+  padding: 14px 18px;
+  border-radius: 8px;
+  line-height: 1.75;
 }
 
-/* Assistant messages (incoming) */
-:global(.cs-message--incoming) {
-  background: #fff !important;
-  border: 1px solid var(--card-border) !important;
-  box-shadow: var(--shadow) !important;
-  align-self: flex-start !important;
-}
-
-/* User messages (outgoing) */
-:global(.cs-message--outgoing) {
-  background: var(--primary-soft) !important;
-  color: var(--body) !important;
-  align-self: flex-end !important;
-  max-width: min(560px, 72%) !important;
-}
-
-/* Custom content (Markdown rendered inside assistant messages) */
-:global(.cs-message__custom-content) {
+.userMessage {
+  max-width: min(560px, 72%);
+  justify-self: end;
+  background: var(--primary-soft);
   color: var(--body);
+}
+
+.assistantMessage {
+  max-width: min(760px, 88%);
+  justify-self: start;
+  background: #fff;
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow);
+}
+
+.messageRole {
+  margin-bottom: 6px;
+  color: var(--helper);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.messageText {
+  margin: 0;
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.8;
   overflow-wrap: anywhere;
 }
 
-/* Text content (user messages) */
-:global(.cs-message__text-content) {
-  color: var(--body);
-  overflow-wrap: anywhere;
-}
-
-/* ===== Markdown styles (inside custom-content) ===== */
-:global(.cs-message__custom-content) p {
+.messageText p {
   margin: 0 0 8px;
 }
-:global(.cs-message__custom-content) p:last-child {
+
+.messageText p:last-child {
   margin-bottom: 0;
 }
-:global(.cs-message__custom-content) h1,
-:global(.cs-message__custom-content) h2,
-:global(.cs-message__custom-content) h3,
-:global(.cs-message__custom-content) h4 {
+
+.messageText h1,
+.messageText h2,
+.messageText h3,
+.messageText h4 {
   margin: 16px 0 8px;
   color: var(--heading);
   font-weight: 700;
   line-height: 1.3;
 }
-:global(.cs-message__custom-content) h1 { font-size: 20px; }
-:global(.cs-message__custom-content) h2 { font-size: 17px; }
-:global(.cs-message__custom-content) h3 { font-size: 15px; }
-:global(.cs-message__custom-content) ul,
-:global(.cs-message__custom-content) ol {
+
+.messageText h1 { font-size: 20px; }
+.messageText h2 { font-size: 17px; }
+.messageText h3 { font-size: 15px; }
+
+.messageText ul,
+.messageText ol {
   margin: 8px 0;
   padding-left: 24px;
 }
-:global(.cs-message__custom-content) li {
+
+.messageText li {
   margin: 4px 0;
 }
-:global(.cs-message__custom-content) strong {
+
+.messageText strong {
   font-weight: 700;
   color: var(--heading);
 }
-:global(.cs-message__custom-content) em {
+
+.messageText em {
   font-style: italic;
 }
-:global(.cs-message__custom-content) code {
+
+.messageText code {
   padding: 2px 6px;
   border-radius: 4px;
   background: #f4f6fa;
   font-size: 13px;
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
 }
-:global(.cs-message__custom-content) pre {
+
+.messageText pre {
   margin: 12px 0;
   padding: 14px 16px;
   border-radius: 8px;
@@ -561,13 +567,15 @@
   color: #e2e8f0;
   overflow-x: auto;
 }
-:global(.cs-message__custom-content) pre code {
+
+.messageText pre code {
   padding: 0;
   background: transparent;
   color: inherit;
   font-size: 13px;
 }
-:global(.cs-message__custom-content) blockquote {
+
+.messageText blockquote {
   margin: 10px 0;
   padding: 8px 14px;
   border-left: 3px solid var(--primary);
@@ -575,30 +583,36 @@
   border-radius: 0 6px 6px 0;
   color: var(--body);
 }
-:global(.cs-message__custom-content) a {
+
+.messageText a {
   color: var(--primary);
   text-decoration: underline;
 }
-:global(.cs-message__custom-content) table {
+
+.messageText table {
   width: 100%;
   border-collapse: collapse;
   margin: 12px 0;
   font-size: 13px;
 }
-:global(.cs-message__custom-content) th,
-:global(.cs-message__custom-content) td {
+
+.messageText th,
+.messageText td {
   padding: 8px 12px;
   border: 1px solid var(--card-border);
   text-align: left;
 }
-:global(.cs-message__custom-content) th {
+
+.messageText th {
   background: #f8f9fb;
   font-weight: 600;
 }
-:global(.cs-message__custom-content) tr:nth-child(even) {
+
+.messageText tr:nth-child(even) {
   background: #fafbfc;
 }
-:global(.cs-message__custom-content) hr {
+
+.messageText hr {
   border: none;
   border-top: 1px solid var(--card-divider);
   margin: 14px 0;

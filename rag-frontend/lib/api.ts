@@ -137,6 +137,45 @@ export type IngestResponse = {
   storage_object_key?: string | null;
   content_type?: string | null;
   file_size: number;
+  task_id?: string | null;
+};
+
+export type IngestionTaskLogResponse = {
+  id: number;
+  task_id: string;
+  node_name: string;
+  status: string;
+  message: string;
+  details?: Record<string, unknown> | null;
+  error?: string | null;
+  duration_ms: number;
+  started_at: string;
+  finished_at?: string | null;
+};
+
+export type IngestionTaskResponse = {
+  id: string;
+  knowledge_base_id: string;
+  knowledge_base_name: string;
+  filename: string;
+  source: string;
+  task_type: string;
+  status: string;
+  current_node?: string | null;
+  message: string;
+  chunks: number;
+  skipped: number;
+  error?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at: string;
+  logs: IngestionTaskLogResponse[];
+};
+
+export type IngestionTaskListResponse = {
+  tasks: IngestionTaskResponse[];
+  total: number;
 };
 
 export type DeleteDocumentResponse = {
