@@ -162,6 +162,10 @@ def list_recent_session_messages(
     return list(reversed(messages))
 
 
+def count_session_messages(db: Session, session_id: str) -> int:
+    return db.query(ChatMessage).filter(ChatMessage.session_id == session_id).count()
+
+
 def format_messages_for_memory(messages: list[ChatMessage]) -> str:
     lines: list[str] = []
     for message in messages:
@@ -186,6 +190,21 @@ def build_chat_history_context(
         parts.append(f"最近对话:\n{recent_history}")
 
     return "\n\n".join(parts).strip()
+
+
+def build_session_memory_context(db: Session, session: ChatSession) -> str:
+    total_messages = count_session_messages(db, session.id)
+    if total_messages <= settings.chat_memory_summary_start_messages:
+        messages = list_session_messages(db, session.id)
+        full_history = format_messages_for_memory(messages)
+        return f"完整历史对话:\n{full_history}" if full_history else ""
+
+    recent_messages = list_recent_session_messages(
+        db,
+        session.id,
+        limit=settings.chat_memory_summary_keep_messages,
+    )
+    return build_chat_history_context(session, recent_messages)
 
 
 def _messages_to_summarize(db: Session, session: ChatSession) -> list[ChatMessage]:

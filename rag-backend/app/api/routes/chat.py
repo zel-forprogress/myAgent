@@ -14,9 +14,8 @@ from app.schemas import ChatRequest, ChatResponse
 from app.services.chat_store import (
     add_assistant_message,
     add_user_message,
-    build_chat_history_context,
+    build_session_memory_context,
     get_chat_session,
-    list_recent_session_messages,
 )
 from app.services.graph_service import chat_with_graph, chat_with_graph_stream
 from app.services.knowledge_base_service import (
@@ -90,8 +89,7 @@ def chat_in_session(
         else:
             knowledge_bases = resolve_knowledge_bases(db, None)
 
-        recent_messages = list_recent_session_messages(db, session.id)
-        chat_history = build_chat_history_context(session, recent_messages)
+        chat_history = build_session_memory_context(db, session)
         add_user_message(db, session, request.question)
         response = run_chat(
             [item.collection_name for item in knowledge_bases],
@@ -140,8 +138,7 @@ def chat_in_session_stream(
         else:
             knowledge_bases = resolve_knowledge_bases(db, None)
 
-        recent_messages = list_recent_session_messages(db, session.id)
-        chat_history = build_chat_history_context(session, recent_messages)
+        chat_history = build_session_memory_context(db, session)
         add_user_message(db, session, request.question)
         collection_names = [item.collection_name for item in knowledge_bases]
         knowledge_base_names = [item.name for item in knowledge_bases]

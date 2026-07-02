@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from app.models import ChatMessage, ChatSession
-from app.services.chat_store import build_chat_history_context, format_messages_for_memory
+from app.services.chat_store import (
+    build_chat_history_context,
+    build_session_memory_context,
+    format_messages_for_memory,
+)
 
 
 class TestFormatMessagesForMemory:
@@ -49,3 +53,39 @@ class TestBuildChatHistoryContext:
 
         assert "历史摘要:" not in result
         assert result == "最近对话:\n用户: 继续说"
+
+
+class TestBuildSessionMemoryContext:
+    def test_short_session_uses_complete_history(self, monkeypatch):
+        session = ChatSession(id="session-1", title="test")
+        messages = [
+            ChatMessage(role="user", content="第一条"),
+            ChatMessage(role="assistant", content="第二条"),
+        ]
+
+        monkeypatch.setattr("app.services.chat_store.count_session_messages", lambda db, sid: 2)
+        monkeypatch.setattr("app.services.chat_store.list_session_messages", lambda db, sid: messages)
+
+        result = build_session_memory_context(object(), session)  # type: ignore[arg-type]
+
+        assert result.startswith("完整历史对话:")
+        assert "用户: 第一条" in result
+        assert "助手: 第二条" in result
+
+    def test_long_session_uses_summary_and_recent_messages(self, monkeypatch):
+        session = ChatSession(
+            id="session-1",
+            title="test",
+            memory_summary="用户咨询了部署方式。",
+        )
+        recent = [ChatMessage(role="user", content="继续说")]
+
+        monkeypatch.setattr("app.services.chat_store.count_session_messages", lambda db, sid: 20)
+        monkeypatch.setattr("app.services.chat_store.list_recent_session_messages", lambda *args, **kwargs: recent)
+
+        result = build_session_memory_context(object(), session)  # type: ignore[arg-type]
+
+        assert "历史摘要:" in result
+        assert "用户咨询了部署方式。" in result
+        assert "最近对话:" in result
+        assert "用户: 继续说" in result
