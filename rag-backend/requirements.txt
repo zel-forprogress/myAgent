@@ -6,6 +6,8 @@ sqlalchemy
 psycopg[binary]
 PyJWT
 boto3
+celery[redis]
+redis
 
 langchain
 langchain-openai

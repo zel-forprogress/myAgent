@@ -876,6 +876,20 @@
   font-size: 11px;
 }
 
+.taskDetails {
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid #e1e6ef;
+  border-radius: 6px;
+  background: #f8f9fc;
+  color: #59657a;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .pagination {
   display: flex;
   align-items: center;

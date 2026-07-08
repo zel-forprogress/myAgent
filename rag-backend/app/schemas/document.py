@@ -91,10 +91,13 @@ class IngestionTaskResponse(BaseModel):
     source: str
     task_type: str
     status: str
+    queue_job_id: str | None = None
     current_node: str | None = None
     message: str = ""
     chunks: int = 0
     skipped: int = 0
+    retry_count: int = 0
+    max_retries: int = 0
     error: str | None = None
     created_at: str
     started_at: str | None = None

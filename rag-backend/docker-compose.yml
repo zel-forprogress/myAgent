@@ -11,6 +11,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   etcd:
     image: quay.io/coreos/etcd:v3.5.18
     container_name: rag-etcd
@@ -57,3 +65,4 @@ volumes:
   etcd_data:
   minio_data:
   milvus_data:
+  redis_data:

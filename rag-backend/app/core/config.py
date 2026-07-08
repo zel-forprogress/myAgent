@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     langfuse_base_url: Optional[str] = None
     langfuse_timeout: int = 30
 
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    celery_broker_url: Optional[str] = None
+    celery_result_backend: Optional[str] = None
+    ingestion_task_max_retries: int = 3
+    ingestion_task_retry_delay_seconds: int = 30
+
     chat_history_recent_messages: int = 8
     chat_memory_summary_enabled: bool = True
     chat_memory_summary_start_messages: int = 16

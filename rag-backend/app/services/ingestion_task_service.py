@@ -7,6 +7,7 @@ from typing import Iterator
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import IngestionTask, IngestionTaskLog, KnowledgeBase
 from app.schemas import IngestionTaskLogResponse, IngestionTaskResponse
 
@@ -28,6 +29,7 @@ def create_ingestion_task(
         task_type=task_type,
         status="pending",
         message=message,
+        max_retries=settings.ingestion_task_max_retries,
     )
     db.add(task)
     db.commit()
@@ -46,6 +48,9 @@ def update_ingestion_task(
     source: str | None = None,
     chunks: int | None = None,
     skipped: int | None = None,
+    queue_job_id: str | None = None,
+    retry_count: int | None = None,
+    max_retries: int | None = None,
     error: str | None = None,
 ) -> IngestionTask:
     now = datetime.utcnow()
@@ -67,6 +72,12 @@ def update_ingestion_task(
         task.chunks = chunks
     if skipped is not None:
         task.skipped = skipped
+    if queue_job_id is not None:
+        task.queue_job_id = queue_job_id
+    if retry_count is not None:
+        task.retry_count = retry_count
+    if max_retries is not None:
+        task.max_retries = max_retries
     if error is not None:
         task.error = error
     task.updated_at = now
@@ -225,10 +236,13 @@ def serialize_ingestion_task(
         source=task.source,
         task_type=task.task_type,
         status=task.status,
+        queue_job_id=task.queue_job_id,
         current_node=task.current_node,
         message=task.message or "",
         chunks=task.chunks or 0,
         skipped=task.skipped or 0,
+        retry_count=task.retry_count or 0,
+        max_retries=task.max_retries or 0,
         error=task.error,
         created_at=task.created_at.isoformat(),
         started_at=task.started_at.isoformat() if task.started_at else None,

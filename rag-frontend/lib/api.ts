@@ -153,6 +153,17 @@ export type IngestionTaskLogResponse = {
   finished_at?: string | null;
 };
 
+export type IngestionTaskStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "retrying"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "skipped"
+  | string;
+
 export type IngestionTaskResponse = {
   id: string;
   knowledge_base_id: string;
@@ -161,10 +172,13 @@ export type IngestionTaskResponse = {
   source: string;
   task_type: string;
   status: string;
+  queue_job_id?: string | null;
   current_node?: string | null;
   message: string;
   chunks: number;
   skipped: number;
+  retry_count: number;
+  max_retries: number;
   error?: string | null;
   created_at: string;
   started_at?: string | null;

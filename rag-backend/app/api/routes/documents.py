@@ -29,16 +29,14 @@ from app.services.ingestion_task_service import (
     task_node,
     update_ingestion_task,
 )
+from app.services.ingestion_queue_service import enqueue_ingestion_task
 from app.services.knowledge_base_service import resolve_knowledge_base
 from app.services.rag_service import (
     detect_file_type,
     delete_document,
     delete_keyword_chunks,
     extract_filename,
-    get_document_character_count,
-    get_document_uploaded_at,
     get_milvus_client,
-    ingest_document,
     normalize_source,
 )
 from app.services.storage_service import (
@@ -99,15 +97,16 @@ def ingest(
         update_ingestion_task(
             db,
             task,
-            status="success",
+            status="pending",
             current_node="record_document",
-            message="Document registered, ready for chunking",
+            message="Document registered, waiting for indexing",
             filename=extract_filename(normalized_source),
             source=normalized_source,
         )
+        task = enqueue_ingestion_task(db, task)
         return IngestResponse(
             success=True,
-            message="Document uploaded, ready for chunking",
+            message=task.message or "Document queued for indexing",
             chunks=0,
             skipped=0,
             knowledge_base_id=knowledge_base.id,
@@ -116,7 +115,7 @@ def ingest(
             stored_path=normalized_source,
             filename=extract_filename(normalized_source),
             file_type=detect_file_type(normalized_source),
-            status="pending",
+            status=task.status,
             character_count=0,
             uploaded_at=storage_metadata.uploaded_at,
             storage_provider=storage_metadata.provider,
@@ -188,14 +187,15 @@ async def ingest_upload(
         update_ingestion_task(
             db,
             task,
-            status="success",
+            status="pending",
             current_node="record_document",
-            message="Document uploaded, ready for chunking",
+            message="Document uploaded, waiting for indexing",
             filename=extract_filename(stored_file.source),
             source=normalize_source(stored_file.source),
         )
 
-        message = "Document uploaded, ready for chunking"
+        task = enqueue_ingestion_task(db, task)
+        message = task.message or "Document queued for indexing"
 
         return IngestResponse(
             success=True,
@@ -208,7 +208,7 @@ async def ingest_upload(
             stored_path=stored_file.source,
             filename=extract_filename(stored_file.source),
             file_type=detect_file_type(stored_file.source),
-            status="pending",
+            status=task.status,
             character_count=0,
             uploaded_at=stored_file.uploaded_at,
             storage_provider=stored_file.provider,
@@ -315,78 +315,28 @@ def chunk_document(
             task_type="chunk",
             filename=extract_filename(normalized_source),
             source=normalized_source,
-            message="Chunk document",
+            message="Re-index document",
         )
-        with task_node(db, task, "inspect_document", "Inspecting document text") as details:
-            character_count, _ = get_document_character_count(normalized_source)
-            storage_metadata = get_stored_file_metadata(normalized_source)
-            details.update(
-                {
-                    "character_count": character_count,
-                    "storage_provider": storage_metadata.provider,
-                    "file_size": storage_metadata.file_size,
-                }
-            )
-        with task_node(db, task, "chunk_embed_index", "Chunking, embedding, and indexing") as details:
-            chunks, skipped = ingest_document(
-                knowledge_base.collection_name, normalized_source,
-                embedding_model=knowledge_base.embedding_model,
-                db=db,
-                knowledge_base_id=knowledge_base.id,
-            )
-            details.update({"chunks": chunks, "skipped": skipped})
-        chunk_status = "success" if chunks > 0 or skipped > 0 else "failed"
-        with task_node(db, task, "update_document_record", "Updating document record"):
-            upsert_document_record(
-                db,
-                knowledge_base=knowledge_base,
-                filename=extract_filename(normalized_source),
-                file_type=detect_file_type(normalized_source),
-                source=normalized_source,
-                storage_provider=storage_metadata.provider,
-                storage_bucket=storage_metadata.bucket,
-                storage_object_key=storage_metadata.object_key,
-                content_type=storage_metadata.content_type,
-                file_size=storage_metadata.file_size,
-                chunks=chunks + skipped,
-                status=chunk_status,
-                character_count=character_count,
-                uploaded_at=storage_metadata.uploaded_at,
-            )
-        message = "Document chunked successfully"
-        if chunks == 0 and skipped > 0:
-            message = "Document already chunked; no new chunks added"
-        if chunk_status == "failed":
-            message = "Document chunking produced no chunks"
         update_ingestion_task(
             db,
             task,
-            status=chunk_status,
-            current_node="update_document_record",
-            message=message,
-            chunks=chunks,
-            skipped=skipped,
-            error=message if chunk_status == "failed" else None,
+            status="pending",
+            current_node="prepare_indexing",
+            message="Document indexing task created",
         )
+        task = enqueue_ingestion_task(db, task)
         return IngestResponse(
             success=True,
-            message=message,
-            chunks=chunks,
-            skipped=skipped,
+            message=task.message or "Document queued for indexing",
+            chunks=0,
+            skipped=0,
             knowledge_base_id=knowledge_base.id,
             knowledge_base_name=knowledge_base.name,
             collection=knowledge_base.collection_name,
             stored_path=normalized_source,
             filename=extract_filename(normalized_source),
             file_type=detect_file_type(normalized_source),
-            status=chunk_status,
-            character_count=character_count,
-            uploaded_at=storage_metadata.uploaded_at,
-            storage_provider=storage_metadata.provider,
-            storage_bucket=storage_metadata.bucket,
-            storage_object_key=storage_metadata.object_key,
-            content_type=storage_metadata.content_type,
-            file_size=storage_metadata.file_size,
+            status=task.status,
             task_id=task.id,
         )
     except ValueError as exc:

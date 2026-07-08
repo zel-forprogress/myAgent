@@ -122,6 +122,28 @@ def _run_schema_migrations() -> None:
                 column_name="standalone_question",
                 column_sql="standalone_question TEXT",
             )
+        if "ingestion_tasks" in table_names:
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="ingestion_tasks",
+                column_name="queue_job_id",
+                column_sql="queue_job_id VARCHAR(255)",
+            )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="ingestion_tasks",
+                column_name="retry_count",
+                column_sql="retry_count INTEGER DEFAULT 0",
+            )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="ingestion_tasks",
+                column_name="max_retries",
+                column_sql="max_retries INTEGER DEFAULT 3",
+            )
 
 
 def _bootstrap_metadata() -> None:

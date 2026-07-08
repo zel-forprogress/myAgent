@@ -9,6 +9,9 @@ from app.schemas import DocumentInfo
 from app.services.rag_service import list_documents as list_documents_from_collection
 
 
+IN_PROGRESS_DOCUMENT_STATUSES = {"pending", "queued", "running", "retrying", "failed"}
+
+
 def _parse_uploaded_at(value: str) -> datetime:
     if not value:
         return datetime.utcnow()
@@ -114,13 +117,13 @@ def sync_document_records(db: Session, knowledge_base: KnowledgeBase) -> list[Kn
         db.query(KnowledgeBaseDocument)
         .filter(
             KnowledgeBaseDocument.knowledge_base_id == knowledge_base.id,
-            KnowledgeBaseDocument.status != "pending",
+            KnowledgeBaseDocument.status.notin_(IN_PROGRESS_DOCUMENT_STATUSES),
         )
         .all()
     )
     stale_deleted = False
     for record in stale_records:
-        if record.source not in seen_sources and record.status != "pending":
+        if record.source not in seen_sources and record.status not in IN_PROGRESS_DOCUMENT_STATUSES:
             db.delete(record)
             stale_deleted = True
 

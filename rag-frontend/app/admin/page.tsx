@@ -799,7 +799,7 @@ export default function AdminPage() {
       const payload = (await response.json()) as IngestResponse | { detail?: string };
       if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.knowledgeBases.chunkFailed);
       const successPayload = payload as IngestResponse;
-      setDeleteNotice({ type: "success", text: `分块完成：${successPayload.chunks} 个 chunk，跳过 ${successPayload.skipped} 个重复。` });
+      setDeleteNotice({ type: "success", text: `重新入库任务已提交：${successPayload.task_id || "-"}，状态 ${formatTaskStatus(successPayload.status)}。` });
       await loadDocuments(selectedKnowledgeBase.id);
       await loadIngestionTasks(selectedKnowledgeBase.id);
       await loadDocumentCounts(knowledgeBases);
@@ -1293,7 +1293,7 @@ export default function AdminPage() {
                           <td>{document.file_type}</td>
                           <td>
                             <span className={styles.statusBadge}>
-                              {{ success: "已分块", pending: "待分块", failed: "分块失败" }[document.status] || document.status}
+                              {formatDocumentStatus(document.status)}
                             </span>
                           </td>
                           <td>{document.storage_provider}</td>
@@ -1310,7 +1310,7 @@ export default function AdminPage() {
                           </td>
                           <td>
                             <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={chunkingSource === document.source} onClick={() => void handleChunkDocument(document.source)} type="button">
-                              {chunkingSource === document.source ? "分块中..." : "分块"}
+                              {chunkingSource === document.source ? "提交中..." : "重新入库"}
                             </button>
                             <button
                               className={styles.deleteButton}
@@ -1343,7 +1343,7 @@ export default function AdminPage() {
                   <div className={styles.cardHeader} style={{ borderBottom: "none", minHeight: 48 }}>
                     <div>
                       <h3 className={styles.cardTitle}>最近入库任务</h3>
-                      <p className={styles.cardSubtitle}>查看上传、分块和向量入库的节点执行日志</p>
+                      <p className={styles.cardSubtitle}>查看上传、解析、向量入库的节点执行日志</p>
                     </div>
                     <button
                       className={styles.refreshButton}
@@ -1377,7 +1377,7 @@ export default function AdminPage() {
                                     {task.filename || task.source || task.id}
                                   </button>
                                 </td>
-                                <td>{task.task_type}</td>
+                                <td>{formatTaskType(task.task_type)}</td>
                                 <td><span className={styles.statusBadge}>{formatTaskStatus(task.status)}</span></td>
                                 <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
                                 <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
@@ -1396,17 +1396,23 @@ export default function AdminPage() {
                               <span>当前节点：{selectedTask.current_node || "-"}</span>
                               <span>消息：{selectedTask.message || "-"}</span>
                             </div>
-                            {selectedTask.logs.map((log) => (
-                              <article key={log.id} className={styles.messageCard}>
+                            {buildTaskTimeline(selectedTask).map((item) => (
+                              <article key={item.key} className={styles.messageCard}>
                                 <div className={styles.messageCardHeader}>
-                                  <strong>{log.node_name}</strong>
-                                  <span>{formatTaskStatus(log.status)} · {log.duration_ms}ms</span>
+                                  <strong>{formatNodeName(item.nodeName)}</strong>
+                                  <span>{formatTaskStatus(item.status)} · {item.durationMs}ms</span>
                                 </div>
-                                <p className={styles.messageContent}>{log.message || "-"}</p>
-                                {log.error ? <p className={styles.noticeError} style={{ marginTop: 8 }}>{log.error}</p> : null}
-                                {log.details ? (
-                                  <pre style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11, color: "#59657a" }}>
-                                    {JSON.stringify(log.details, null, 2)}
+                                <p className={styles.messageContent}>{item.message || "-"}</p>
+                                {item.startedAt || item.finishedAt ? (
+                                  <div className={styles.messageMeta}>
+                                    {item.startedAt ? <span>开始：{new Date(item.startedAt).toLocaleTimeString("zh-CN")}</span> : null}
+                                    {item.finishedAt ? <span>结束：{new Date(item.finishedAt).toLocaleTimeString("zh-CN")}</span> : null}
+                                  </div>
+                                ) : null}
+                                {item.error ? <p className={styles.noticeError} style={{ marginTop: 8 }}>{item.error}</p> : null}
+                                {item.details ? (
+                                  <pre className={styles.taskDetails}>
+                                    {JSON.stringify(item.details, null, 2)}
                                   </pre>
                                 ) : null}
                               </article>
@@ -1790,7 +1796,7 @@ export default function AdminPage() {
       </Modal>
       <Modal
         open={chunkDetailOpen}
-        title={`分块详情：${chunkDetailDoc}`}
+        title={`片段详情：${chunkDetailDoc}`}
         onClose={() => setChunkDetailOpen(false)}
         actions={<button className={styles.backButton} onClick={() => setChunkDetailOpen(false)} type="button">关闭</button>}
       >
@@ -1806,7 +1812,7 @@ export default function AdminPage() {
             ))}
           </div>
         ) : (
-          <p className={styles.emptyState}>暂无分块数据，请先点击分块按钮。</p>
+          <p className={styles.emptyState}>暂无片段数据，请先等待入库完成或点击重新入库。</p>
         )}
       </Modal>
     </main>
@@ -1869,13 +1875,99 @@ function NoticeBox({ notice }: { notice: Notice }) {
   );
 }
 
+type TaskLog = IngestionTaskResponse["logs"][number];
+
+type TaskTimelineItem = {
+  key: string;
+  nodeName: string;
+  status: string;
+  message: string;
+  details: Record<string, unknown> | null;
+  error: string | null;
+  durationMs: number;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+};
+
+function buildTaskTimeline(task: IngestionTaskResponse): TaskTimelineItem[] {
+  const grouped = new Map<string, TaskLog[]>();
+  for (const log of task.logs) {
+    const logs = grouped.get(log.node_name) ?? [];
+    logs.push(log);
+    grouped.set(log.node_name, logs);
+  }
+
+  return Array.from(grouped.entries()).map(([nodeName, logs]) => {
+    const finishedLog =
+      [...logs].reverse().find((log) => log.status !== "running") ?? logs[logs.length - 1];
+    const runningLog = logs.find((log) => log.status === "running");
+    const detailsLog = [...logs].reverse().find((log) => log.details);
+    const errorLog = [...logs].reverse().find((log) => log.error);
+
+    return {
+      key: `${nodeName}-${logs[0]?.id ?? nodeName}`,
+      nodeName,
+      status: finishedLog?.status ?? "running",
+      message: finishedLog?.message || runningLog?.message || "",
+      details: detailsLog?.details ?? null,
+      error: errorLog?.error ?? null,
+      durationMs: finishedLog?.duration_ms ?? 0,
+      startedAt: runningLog?.started_at ?? finishedLog?.started_at ?? null,
+      finishedAt: finishedLog?.finished_at ?? null,
+    };
+  });
+}
+
+function formatDocumentStatus(status: string) {
+  return (
+    {
+      pending: "待入库",
+      queued: "队列中",
+      running: "入库中",
+      retrying: "重试中",
+      success: "已入库",
+      failed: "入库失败",
+      indexed: "已入库",
+    }[status] || status
+  );
+}
+
+function formatTaskType(type: string) {
+  return (
+    {
+      upload: "上传入库",
+      register: "本地登记",
+      chunk: "重新入库",
+    }[type] || type
+  );
+}
+
+function formatNodeName(nodeName: string) {
+  return (
+    {
+      enqueue: "提交队列",
+      read_upload: "读取上传",
+      store_file: "保存文件",
+      record_document: "登记文档",
+      prepare_indexing: "准备入库",
+      inspect_document: "检查文档",
+      chunk_embed_index: "生成片段与向量入库",
+      update_document_record: "更新文档记录",
+      finalize_task: "完成任务",
+    }[nodeName] || nodeName
+  );
+}
+
 function formatTaskStatus(status: string) {
   return (
     {
       pending: "待执行",
+      queued: "队列中",
       running: "执行中",
+      retrying: "重试中",
       success: "成功",
       failed: "失败",
+      cancelled: "已取消",
       skipped: "跳过",
     }[status] || status
   );
