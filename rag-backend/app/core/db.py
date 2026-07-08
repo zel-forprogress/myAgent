@@ -122,6 +122,20 @@ def _run_schema_migrations() -> None:
                 column_name="standalone_question",
                 column_sql="standalone_question TEXT",
             )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_messages",
+                column_name="task_intent",
+                column_sql="task_intent VARCHAR(50)",
+            )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_messages",
+                column_name="task_confidence",
+                column_sql="task_confidence FLOAT",
+            )
         if "ingestion_tasks" in table_names:
             _ensure_column(
                 connection,

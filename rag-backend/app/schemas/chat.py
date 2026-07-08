@@ -27,6 +27,8 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[SourceChunk]
     route: str = ""
+    task_intent: str = ""
+    task_confidence: float = 0.0
     steps: List[str] = []
     retrieval_quality: str = ""
     rewritten_question: str = ""
@@ -63,6 +65,8 @@ class MessageResponse(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     route: str = ""
+    task_intent: str = ""
+    task_confidence: float = 0.0
     retrieval_quality: str = ""
     rewritten_question: str = ""
     standalone_question: str = ""

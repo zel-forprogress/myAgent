@@ -36,13 +36,21 @@ def run_chat(
     chat_history: str = "",
 ) -> ChatResponse:
     with start_chat_trace(question, top_k, knowledge_base_names) as trace:
-        answer, sources, route, steps, retrieval_quality, rewritten_question, standalone_question = (
-            chat_with_graph(
-                collection_names=collection_names,
-                question=question,
-                top_k=top_k,
-                chat_history=chat_history,
-            )
+        (
+            answer,
+            sources,
+            route,
+            steps,
+            retrieval_quality,
+            rewritten_question,
+            standalone_question,
+            task_intent,
+            task_confidence,
+        ) = chat_with_graph(
+            collection_names=collection_names,
+            question=question,
+            top_k=top_k,
+            chat_history=chat_history,
         )
         update_chat_trace(
             trace,
@@ -57,6 +65,8 @@ def run_chat(
         answer=answer,
         sources=sources,
         route=route,
+        task_intent=task_intent,
+        task_confidence=task_confidence,
         steps=steps,
         retrieval_quality=retrieval_quality,
         rewritten_question=rewritten_question,
@@ -103,6 +113,8 @@ def chat_in_session(
             session,
             content=response.answer,
             route=response.route,
+            task_intent=response.task_intent,
+            task_confidence=response.task_confidence,
             retrieval_quality=response.retrieval_quality,
             rewritten_question=response.rewritten_question,
             sources=response.sources,
@@ -170,20 +182,30 @@ def chat_in_session_stream(
                                 encode_stream_event(event["type"], event.get("data", {}))
                             )
 
-                        answer, sources, route, steps, retrieval_quality, rewritten_question, standalone_question = (
-                            chat_with_graph_stream(
-                                collection_names=collection_names,
-                                question=request.question,
-                                top_k=request.top_k,
-                                chat_history=chat_history,
-                                on_event=emit,
-                            )
+                        (
+                            answer,
+                            sources,
+                            route,
+                            steps,
+                            retrieval_quality,
+                            rewritten_question,
+                            standalone_question,
+                            task_intent,
+                            task_confidence,
+                        ) = chat_with_graph_stream(
+                            collection_names=collection_names,
+                            question=request.question,
+                            top_k=request.top_k,
+                            chat_history=chat_history,
+                            on_event=emit,
                         )
 
                         final_response = ChatResponse(
                             answer=answer,
                             sources=sources,
                             route=route,
+                            task_intent=task_intent,
+                            task_confidence=task_confidence,
                             steps=steps,
                             retrieval_quality=retrieval_quality,
                             rewritten_question=rewritten_question,
@@ -222,6 +244,8 @@ def chat_in_session_stream(
                     session,
                     content=final_response.answer,
                     route=final_response.route,
+                    task_intent=final_response.task_intent,
+                    task_confidence=final_response.task_confidence,
                     retrieval_quality=final_response.retrieval_quality,
                     rewritten_question=final_response.rewritten_question,
                     sources=final_response.sources,

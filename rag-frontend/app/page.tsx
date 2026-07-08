@@ -37,6 +37,20 @@ type StreamEvent = {
   data: Record<string, unknown>;
 };
 
+function emptyChatResult(answer = ""): ChatResponse {
+  return {
+    answer,
+    sources: [],
+    route: "",
+    task_intent: "",
+    task_confidence: 0,
+    steps: [],
+    retrieval_quality: "",
+    rewritten_question: "",
+    standalone_question: "",
+  };
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [question, setQuestion] = useState("");
@@ -125,7 +139,7 @@ export default function HomePage() {
   // ========================== Logic (unchanged) ==========================
 
   function buildTempMessage(id: number, role: "user" | "assistant", content: string): MessageResponse {
-    return { id, session_id: currentSessionId, role, content, route: "", retrieval_quality: "", rewritten_question: "", standalone_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
+    return { id, session_id: currentSessionId, role, content, route: "", task_intent: "", task_confidence: 0, retrieval_quality: "", rewritten_question: "", standalone_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
   }
 
   function updateTempAssistantMessage(tempId: number, content: string) {
@@ -207,7 +221,7 @@ export default function HomePage() {
       setSelectedKnowledgeBaseIds(chosenIds);
       const latestAssistant = [...payload.messages].reverse().find((item) => item.role === "assistant");
       if (latestAssistant) {
-        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question, standalone_question: latestAssistant.standalone_question });
+        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, task_intent: latestAssistant.task_intent, task_confidence: latestAssistant.task_confidence, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question, standalone_question: latestAssistant.standalone_question });
       } else {
         setResult(null);
       }
@@ -295,7 +309,7 @@ export default function HomePage() {
       const userMessage = buildTempMessage(tempUserId, "user", trimmedQuestion);
       const assistantMessage = buildTempMessage(tempAssistantId, "assistant", "");
       setMessages((current) => [...current, userMessage, assistantMessage]);
-      setResult({ answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" });
+      setResult(emptyChatResult());
       setQuestion("");
       const controller = new AbortController();
       setAbortController(controller);
@@ -323,18 +337,18 @@ export default function HomePage() {
           const eventPayload = JSON.parse(line) as StreamEvent;
           if (eventPayload.type === "step") {
             const step = String(eventPayload.data.step ?? "");
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, route: String(eventPayload.data.route ?? "") || base.route, retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality, steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps }; });
+            setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, route: String(eventPayload.data.route ?? "") || base.route, task_intent: String(eventPayload.data.task_intent ?? "") || base.task_intent, task_confidence: Number(eventPayload.data.task_confidence ?? base.task_confidence) || base.task_confidence, retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality, steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps }; });
           } else if (eventPayload.type === "sources") {
             const nextSources = Array.isArray(eventPayload.data.sources) ? (eventPayload.data.sources as ChatResponse["sources"]) : [];
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, sources: nextSources }; });
+            setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, sources: nextSources }; });
           } else if (eventPayload.type === "meta") {
-            setResult((current) => { const base = current ?? { answer: answerBuffer, sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer, rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question, standalone_question: String(eventPayload.data.standalone_question ?? "") || base.standalone_question }; });
+            setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question, standalone_question: String(eventPayload.data.standalone_question ?? "") || base.standalone_question }; });
           } else if (eventPayload.type === "token") {
             const content = String(eventPayload.data.content ?? "");
             if (!content) continue;
             answerBuffer += content;
             updateTempAssistantMessage(tempAssistantId, answerBuffer);
-            setResult((current) => { const base = current ?? { answer: "", sources: [], route: "", steps: [], retrieval_quality: "", rewritten_question: "", standalone_question: "" }; return { ...base, answer: answerBuffer }; });
+            setResult((current) => { const base = current ?? emptyChatResult(); return { ...base, answer: answerBuffer }; });
           } else if (eventPayload.type === "final") {
             const finalPayload = eventPayload.data as unknown as ChatResponse;
             answerBuffer = finalPayload.answer;
@@ -611,6 +625,7 @@ export default function HomePage() {
           </div>
           <div className={styles.statusRow}>
             <StatusBadge label="Route" value={result?.route || "-"} />
+            <StatusBadge label="Intent" value={formatTaskIntent(result?.task_intent)} />
             <StatusBadge label="Retrieval" value={result?.retrieval_quality || "-"} />
             <StatusBadge label="Sources" value={String(result?.sources.length ?? 0)} />
           </div>
@@ -678,6 +693,20 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
 
 function formatScore(value?: number | null) {
   return typeof value === "number" ? value.toFixed(3) : "-";
+}
+
+function formatTaskIntent(intent?: string | null) {
+  return (
+    {
+      chat: "闲聊",
+      knowledge_qa: "知识问答",
+      summarize: "总结",
+      compare: "对比",
+      extract: "抽取",
+      write: "写作",
+      tool: "工具",
+    }[intent || ""] || intent || "-"
+  );
 }
 
 function ScoreItem({ label, value }: { label: string; value?: number | null }) {

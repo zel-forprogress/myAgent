@@ -32,6 +32,8 @@ class ChatState(TypedDict):
     top_k: int
     collection_names: List[str]
     route: str
+    task_intent: str
+    task_confidence: float
     retrieval_quality: str
     sources: List[SourceChunk]
     answer: str
@@ -55,6 +57,16 @@ DIRECT_PATTERNS = [
     "再见",
     "拜拜",
 ]
+
+TASK_INTENTS = {
+    "chat",
+    "knowledge_qa",
+    "summarize",
+    "compare",
+    "extract",
+    "write",
+    "tool",
+}
 
 
 def append_step(state: ChatState, step: str) -> List[str]:
@@ -98,6 +110,8 @@ def state_snapshot_for_span(state: ChatState) -> dict[str, Any]:
         "collection_names": state.get("collection_names", []),
         "collection_count": len(state.get("collection_names", [])),
         "route": state.get("route", ""),
+        "task_intent": state.get("task_intent", ""),
+        "task_confidence": state.get("task_confidence", 0.0),
         "retrieval_quality": state.get("retrieval_quality", ""),
         "source_count": len(sources),
         "max_source_score": max_source_score(sources),
@@ -131,6 +145,36 @@ def keyword_route(question: str) -> str:
     if is_direct_question(question):
         return "direct"
     return "rag"
+
+
+def keyword_task_intent(question: str) -> str:
+    normalized_question = question.strip().lower()
+    if is_direct_question(normalized_question):
+        return "chat"
+    if any(word in normalized_question for word in ["总结", "概括", "归纳", "梳理"]):
+        return "summarize"
+    if any(word in normalized_question for word in ["对比", "比较", "区别", "差异"]):
+        return "compare"
+    if any(word in normalized_question for word in ["抽取", "提取", "列出", "字段", "清单"]):
+        return "extract"
+    if any(word in normalized_question for word in ["写", "生成", "起草", "方案", "报告"]):
+        return "write"
+    return "knowledge_qa"
+
+
+def normalize_task_intent(raw_intent: str, question: str) -> str:
+    normalized_intent = raw_intent.strip().lower().replace("-", "_")
+    if normalized_intent in TASK_INTENTS:
+        return normalized_intent
+    if normalized_intent in {"direct", "smalltalk", "casual"}:
+        return "chat"
+    if normalized_intent in {"rag", "qa", "question_answering", "knowledge"}:
+        return "knowledge_qa"
+    return keyword_task_intent(question)
+
+
+def route_from_task_intent(task_intent: str) -> str:
+    return "direct" if task_intent == "chat" else "rag"
 
 
 def normalize_route(raw_route: str, question: str) -> str:
@@ -251,19 +295,23 @@ def analyze_question(state: ChatState) -> dict:
         [
             (
                 "system",
-                "你是一个严格的问题路由器。你的任务是判断用户问题是否需要查询当前知识库。"
-                "当前系统是知识库问答系统，默认优先使用知识库检索。"
-                "你只能输出 rag 或 direct，不要解释。",
+                "你是 Agentic RAG 的任务意图路由器。你的任务是判断用户当前请求属于哪类任务。"
+                "只能输出一个标签，不要解释。可选标签: "
+                "chat, knowledge_qa, summarize, compare, extract, write, tool。",
             ),
             (
                 "human",
-                "判断规则:\n"
-                "- 只要问题是在询问知识、概念、说明、介绍、总结、对比、原理、作用、用途、文档内容等，优先输出 rag。\n"
-                "- 如果问题涉及已上传文档、知识库内容、项目、技术栈、系统实现、架构、LangGraph、Milvus、RAG、Qwen、FastAPI 等内容，必须输出 rag。\n"
-                "- 只有在问题是纯问候、寒暄、自我介绍这类明显不需要检索的内容时，才输出 direct。\n"
-                "- 不要因为问题看起来像通用知识就输出 direct；知识库系统默认先检索再回答。\n\n"
+                "分类规则:\n"
+                "- chat: 纯问候、寒暄、感谢、自我介绍，不需要知识库。\n"
+                "- knowledge_qa: 基于知识库回答概念、说明、要求、流程、原因、用途等问题。\n"
+                "- summarize: 总结、概括、归纳一个或多个文档/主题。\n"
+                "- compare: 对比多个对象、方案、文档或差异。\n"
+                "- extract: 抽取字段、清单、表格、要求、时间、数字、条款。\n"
+                "- write: 基于资料写报告、方案、邮件、计划、文案。\n"
+                "- tool: 明确要求执行外部动作或调用业务系统/API。\n\n"
+                "默认原则: 除 chat 外，其它任务都需要知识库或工具上下文。\n\n"
                 "用户问题: {question}\n\n"
-                "请只输出 rag 或 direct。",
+                "请只输出一个标签。",
             ),
         ]
     )
@@ -282,11 +330,18 @@ def analyze_question(state: ChatState) -> dict:
                 output=response.content,
                 usage_details=extract_usage_details(response),
             )
-        route = normalize_route(response.content, question)
+        task_intent = normalize_task_intent(str(response.content), question)
     except Exception:
-        route = keyword_route(question)
+        task_intent = keyword_task_intent(question)
 
-    return {"route": route, "steps": append_step(state, "analyze_question")}
+    route = route_from_task_intent(task_intent)
+    task_confidence = 0.95 if task_intent == keyword_task_intent(question) else 0.75
+    return {
+        "route": route,
+        "task_intent": task_intent,
+        "task_confidence": task_confidence,
+        "steps": append_step(state, "analyze_question"),
+    }
 
 
 def route_question(state: ChatState) -> str:
@@ -540,7 +595,7 @@ def chat_with_graph_stream(
     top_k: int,
     chat_history: str,
     on_event: Callable[[dict[str, Any]], None],
-) -> tuple[str, List[SourceChunk], str, List[str], str, str, str]:
+) -> tuple[str, List[SourceChunk], str, List[str], str, str, str, str, float]:
     state: ChatState = {
         "question": question,
         "chat_history": chat_history,
@@ -549,6 +604,8 @@ def chat_with_graph_stream(
         "top_k": top_k,
         "collection_names": collection_names,
         "route": "",
+        "task_intent": "",
+        "task_confidence": 0.0,
         "retrieval_quality": "",
         "sources": [],
         "answer": "",
@@ -567,6 +624,8 @@ def chat_with_graph_stream(
                     "step": name,
                     "status": "done",
                     "route": state.get("route", ""),
+                    "task_intent": state.get("task_intent", ""),
+                    "task_confidence": state.get("task_confidence", 0.0),
                     "retrieval_quality": state.get("retrieval_quality", ""),
                 },
             }
@@ -657,6 +716,8 @@ def chat_with_graph_stream(
         state.get("retrieval_quality", ""),
         state.get("rewritten_question", ""),
         state.get("standalone_question", ""),
+        state.get("task_intent", ""),
+        state.get("task_confidence", 0.0),
     )
 
 
@@ -722,7 +783,7 @@ def chat_with_graph(
     question: str,
     top_k: int = 4,
     chat_history: str = "",
-) -> tuple[str, List[SourceChunk], str, List[str], str, str, str]:
+) -> tuple[str, List[SourceChunk], str, List[str], str, str, str, str, float]:
     result = chat_graph.invoke(
         {
             "question": question,
@@ -732,6 +793,8 @@ def chat_with_graph(
             "top_k": top_k,
             "collection_names": collection_names,
             "route": "",
+            "task_intent": "",
+            "task_confidence": 0.0,
             "retrieval_quality": "",
             "sources": [],
             "answer": "",
@@ -746,4 +809,6 @@ def chat_with_graph(
         result.get("retrieval_quality", ""),
         result.get("rewritten_question", ""),
         result.get("standalone_question", ""),
+        result.get("task_intent", ""),
+        result.get("task_confidence", 0.0),
     )

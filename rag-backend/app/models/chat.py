@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -58,6 +58,8 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
     route: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    task_intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    task_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     retrieval_quality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     rewritten_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     standalone_question: Mapped[str | None] = mapped_column(Text, nullable=True)

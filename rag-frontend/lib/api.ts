@@ -42,6 +42,8 @@ export type ChatResponse = {
   answer: string;
   sources: SourceChunk[];
   route: string;
+  task_intent: string;
+  task_confidence: number;
   steps: string[];
   retrieval_quality: string;
   rewritten_question: string;
@@ -97,6 +99,8 @@ export type MessageResponse = {
   role: "user" | "assistant";
   content: string;
   route: string;
+  task_intent: string;
+  task_confidence: number;
   retrieval_quality: string;
   rewritten_question: string;
   standalone_question: string;

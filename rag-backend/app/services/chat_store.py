@@ -106,11 +106,13 @@ def add_assistant_message(
     session: ChatSession,
     *,
     content: str,
-    route: str,
-    retrieval_quality: str,
-    rewritten_question: str,
-    sources: list[SourceChunk],
-    steps: list[str],
+    route: str = "",
+    task_intent: str = "",
+    task_confidence: float = 0.0,
+    retrieval_quality: str = "",
+    rewritten_question: str = "",
+    sources: list[SourceChunk] | None = None,
+    steps: list[str] | None = None,
     standalone_question: str = "",
 ) -> ChatMessage:
     message = ChatMessage(
@@ -118,12 +120,14 @@ def add_assistant_message(
         role="assistant",
         content=content,
         route=route,
+        task_intent=task_intent,
+        task_confidence=task_confidence,
         retrieval_quality=retrieval_quality,
         rewritten_question=rewritten_question,
         standalone_question=standalone_question,
-        source_count=len(sources),
-        sources=[source.model_dump() for source in sources],
-        steps=steps,
+        source_count=len(sources or []),
+        sources=[source.model_dump() for source in sources or []],
+        steps=steps or [],
     )
     db.add(message)
     session.updated_at = datetime.utcnow()

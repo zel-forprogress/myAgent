@@ -9,8 +9,11 @@ from app.services.graph_service import (
     extract_stream_text,
     is_direct_question,
     keyword_route,
+    keyword_task_intent,
     max_source_score,
+    normalize_task_intent,
     normalize_route,
+    route_from_task_intent,
     serialize_value_for_span,
     shorten_text,
     ChatState,
@@ -144,6 +147,30 @@ class TestKeywordRoute:
     def test_question_routes_to_rag(self):
         assert keyword_route("什么是RAG") == "rag"
         assert keyword_route("如何部署") == "rag"
+
+
+class TestTaskIntentRouting:
+    def test_greeting_is_chat_intent(self):
+        assert keyword_task_intent("你好") == "chat"
+        assert route_from_task_intent("chat") == "direct"
+
+    def test_summarize_intent(self):
+        assert keyword_task_intent("总结一下这份文档") == "summarize"
+        assert route_from_task_intent("summarize") == "rag"
+
+    def test_compare_intent(self):
+        assert keyword_task_intent("对比两个方案的差异") == "compare"
+
+    def test_extract_intent(self):
+        assert keyword_task_intent("提取里面的考试要求清单") == "extract"
+
+    def test_write_intent(self):
+        assert keyword_task_intent("根据资料写一份报告") == "write"
+
+    def test_normalize_aliases(self):
+        assert normalize_task_intent("direct", "你好") == "chat"
+        assert normalize_task_intent("rag", "什么是RAG") == "knowledge_qa"
+        assert normalize_task_intent("knowledge-qa", "什么是RAG") == "knowledge_qa"
 
 
 class TestNormalizeRoute:
