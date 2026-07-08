@@ -148,6 +148,7 @@ export default function AdminPage() {
   const [retrievalKbId, setRetrievalKbId] = useState("");
   const [retrievalQuestion, setRetrievalQuestion] = useState("");
   const [retrievalTopK, setRetrievalTopK] = useState(6);
+  const [retrievalUseRerank, setRetrievalUseRerank] = useState(false);
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalNotice, setRetrievalNotice] = useState<Notice | null>(null);
   const [retrievalResult, setRetrievalResult] = useState<RetrievalTestResponse | null>(null);
@@ -859,6 +860,7 @@ export default function AdminPage() {
           question,
           knowledge_base_ids: [retrievalKbId],
           top_k: retrievalTopK,
+          use_rerank: retrievalUseRerank,
         }),
       });
       const payload = (await response.json()) as RetrievalTestResponse | { detail?: string };
@@ -1835,6 +1837,15 @@ export default function AdminPage() {
                   value={retrievalTopK}
                 />
 
+                <label className={styles.checkboxLabel}>
+                  <input
+                    checked={retrievalUseRerank}
+                    onChange={(event) => setRetrievalUseRerank(event.target.checked)}
+                    type="checkbox"
+                  />
+                  启用 Rerank 重排
+                </label>
+
                 <div>
                   <button className={styles.primaryButton} disabled={retrievalLoading} type="submit">
                     {retrievalLoading ? "测试中..." : "开始测试"}
@@ -1854,6 +1865,17 @@ export default function AdminPage() {
                     <span className={styles.statusLabel}>耗时 / 命中</span>
                     <span className={styles.statusValue}>
                       {retrievalResult.duration_ms}ms / {retrievalResult.source_count} 个片段
+                      {retrievalResult.candidate_count ? ` / ${retrievalResult.candidate_count} 个候选` : ""}
+                    </span>
+                  </div>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>Rerank</span>
+                    <span className={styles.statusValue}>
+                      {retrievalResult.rerank_enabled
+                        ? retrievalResult.rerank_applied
+                          ? "已应用"
+                          : `未应用${retrievalResult.rerank_error ? `：${retrievalResult.rerank_error}` : ""}`
+                        : "未启用"}
                     </span>
                   </div>
 

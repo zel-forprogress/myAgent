@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, require_admin
+from app.core.config import settings
 from app.models import User
 from app.schemas import (
     DeleteDocumentRequest,
@@ -44,6 +45,7 @@ from app.services.rag_service import (
     normalize_source,
     retrieve_sources_multi,
 )
+from app.services.rerank_service import rerank_sources
 from app.services.storage_service import (
     delete_stored_file,
     get_stored_file_metadata,
@@ -68,21 +70,46 @@ def test_retrieval(
             raise HTTPException(status_code=400, detail="Question is required")
 
         knowledge_bases = resolve_knowledge_bases(db, request.knowledge_base_ids)
+        rerank_enabled = bool(request.use_rerank)
+        requested_top_k = request.top_k
+        candidate_top_k = requested_top_k
+        if rerank_enabled:
+            candidate_top_k = min(
+                max(requested_top_k * max(1, settings.rerank_candidate_multiplier), requested_top_k),
+                50,
+            )
+
         started = perf_counter()
-        sources = retrieve_sources_multi(
+        candidate_sources = retrieve_sources_multi(
             collection_names=[item.collection_name for item in knowledge_bases],
             question=question,
-            top_k=request.top_k,
+            top_k=candidate_top_k,
         )
+        rerank_applied = False
+        rerank_error = ""
+        sources = candidate_sources[:requested_top_k]
+        if rerank_enabled:
+            rerank_result = rerank_sources(
+                question=question,
+                sources=candidate_sources,
+                top_k=requested_top_k,
+            )
+            sources = rerank_result.sources
+            rerank_applied = rerank_result.applied
+            rerank_error = rerank_result.error
         duration_ms = int((perf_counter() - started) * 1000)
         return RetrievalTestResponse(
             question=question,
-            top_k=request.top_k,
+            top_k=requested_top_k,
             knowledge_base_ids=[item.id for item in knowledge_bases],
             knowledge_base_names=[item.name for item in knowledge_bases],
             collection_names=[item.collection_name for item in knowledge_bases],
             duration_ms=duration_ms,
             source_count=len(sources),
+            candidate_count=len(candidate_sources),
+            rerank_enabled=rerank_enabled,
+            rerank_applied=rerank_applied,
+            rerank_error=rerank_error,
             sources=sources,
         )
     except HTTPException:

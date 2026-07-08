@@ -37,6 +37,7 @@ class RetrievalTestRequest(BaseModel):
     question: str = Field(..., description="Question or query to retrieve against")
     knowledge_base_ids: list[str] = Field(..., min_length=1, description="Knowledge base ids")
     top_k: int = Field(default=6, ge=1, le=20, description="Retrieved chunk count")
+    use_rerank: bool = Field(default=False, description="Whether to apply rerank to candidates")
 
 
 class RetrievalTestResponse(BaseModel):
@@ -47,6 +48,10 @@ class RetrievalTestResponse(BaseModel):
     collection_names: list[str]
     duration_ms: int
     source_count: int
+    candidate_count: int = 0
+    rerank_enabled: bool = False
+    rerank_applied: bool = False
+    rerank_error: str = ""
     sources: List[SourceChunk]
 
 

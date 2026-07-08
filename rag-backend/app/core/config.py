@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     ingestion_task_max_retries: int = 3
     ingestion_task_retry_delay_seconds: int = 30
 
+    rerank_enabled: bool = False
+    rerank_model: str = "qwen3-rerank"
+    rerank_base_url: Optional[str] = None
+    rerank_timeout_seconds: int = 30
+    rerank_candidate_multiplier: int = 4
+
     chat_history_recent_messages: int = 8
     chat_memory_summary_enabled: bool = True
     chat_memory_summary_start_messages: int = 16
