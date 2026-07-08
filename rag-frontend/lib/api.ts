@@ -48,6 +48,17 @@ export type ChatResponse = {
   standalone_question: string;
 };
 
+export type RetrievalTestResponse = {
+  question: string;
+  top_k: number;
+  knowledge_base_ids: string[];
+  knowledge_base_names: string[];
+  collection_names: string[];
+  duration_ms: number;
+  source_count: number;
+  sources: SourceChunk[];
+};
+
 export type SessionResponse = {
   id: string;
   title: string;

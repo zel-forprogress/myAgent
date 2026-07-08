@@ -8,7 +8,14 @@ from app.schemas.auth import (
     UserListResponse,
     UserResponse,
 )
-from app.schemas.chat import ChatRequest, ChatResponse, MessageResponse, SourceChunk
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    MessageResponse,
+    RetrievalTestRequest,
+    RetrievalTestResponse,
+    SourceChunk,
+)
 from app.schemas.document import (
     DeleteDocumentRequest,
     DeleteDocumentResponse,
@@ -58,6 +65,8 @@ __all__ = [
     "LoginResponse",
     "MessageResponse",
     "RegisterRequest",
+    "RetrievalTestRequest",
+    "RetrievalTestResponse",
     "SessionCreateRequest",
     "SessionListResponse",
     "SessionMessagesResponse",

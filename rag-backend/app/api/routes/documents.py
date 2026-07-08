@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.schemas import (
     IngestResponse,
     IngestionTaskListResponse,
     IngestionTaskResponse,
+    RetrievalTestRequest,
+    RetrievalTestResponse,
 )
 from app.services.document_service import (
     count_document_records,
@@ -39,6 +42,7 @@ from app.services.rag_service import (
     extract_filename,
     get_milvus_client,
     normalize_source,
+    retrieve_sources_multi,
 )
 from app.services.storage_service import (
     delete_stored_file,
@@ -49,6 +53,45 @@ from app.services.storage_service import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.post("/retrieval/test", response_model=RetrievalTestResponse)
+def test_retrieval(
+    request: RetrievalTestRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> RetrievalTestResponse:
+    try:
+        _ = current_user
+        question = request.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Question is required")
+
+        knowledge_bases = resolve_knowledge_bases(db, request.knowledge_base_ids)
+        started = perf_counter()
+        sources = retrieve_sources_multi(
+            collection_names=[item.collection_name for item in knowledge_bases],
+            question=question,
+            top_k=request.top_k,
+        )
+        duration_ms = int((perf_counter() - started) * 1000)
+        return RetrievalTestResponse(
+            question=question,
+            top_k=request.top_k,
+            knowledge_base_ids=[item.id for item in knowledge_bases],
+            knowledge_base_names=[item.name for item in knowledge_bases],
+            collection_names=[item.collection_name for item in knowledge_bases],
+            duration_ms=duration_ms,
+            source_count=len(sources),
+            sources=sources,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Retrieval test failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/ingest", response_model=IngestResponse)

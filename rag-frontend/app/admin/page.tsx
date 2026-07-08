@@ -21,6 +21,7 @@ import {
   IngestionTaskResponse,
   KnowledgeBaseResponse,
   MessageResponse,
+  RetrievalTestResponse,
   SessionListResponse,
   SessionMessagesResponse,
   SessionResponse,
@@ -56,6 +57,7 @@ const INGESTION_POLL_INTERVAL_MS = 3000;
 type AdminView =
   | "overview"
   | "knowledge-bases"
+  | "retrieval-test"
   | "sessions"
   | "users";
 
@@ -78,6 +80,12 @@ const adminMenus: MenuItem[] = [
     label: "知识库管理",
     description: "创建、切换、删除知识库",
     icon: <MenuIcon variant="layers" />,
+  },
+  {
+    key: "retrieval-test",
+    label: "检索测试",
+    description: "调试问题召回片段和分数",
+    icon: <MenuIcon variant="path" />,
   },
   {
     key: "sessions",
@@ -137,6 +145,12 @@ export default function AdminPage() {
   const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [deletingSource, setDeletingSource] = useState("");
   const [chunkingSource, setChunkingSource] = useState("");
+  const [retrievalKbId, setRetrievalKbId] = useState("");
+  const [retrievalQuestion, setRetrievalQuestion] = useState("");
+  const [retrievalTopK, setRetrievalTopK] = useState(6);
+  const [retrievalLoading, setRetrievalLoading] = useState(false);
+  const [retrievalNotice, setRetrievalNotice] = useState<Notice | null>(null);
+  const [retrievalResult, setRetrievalResult] = useState<RetrievalTestResponse | null>(null);
   const [chunkDetailOpen, setChunkDetailOpen] = useState(false);
   const [chunkDetailSource, setChunkDetailSource] = useState("");
   const [chunkDetailDoc, setChunkDetailDoc] = useState("");
@@ -275,6 +289,12 @@ export default function AdminPage() {
       void loadIngestionTasks(selectedKnowledgeBaseId);
     }
   }, [authReady, selectedKnowledgeBaseId, docPage]);
+
+  useEffect(() => {
+    if (!retrievalKbId && selectedKnowledgeBaseId) {
+      setRetrievalKbId(selectedKnowledgeBaseId);
+    }
+  }, [retrievalKbId, selectedKnowledgeBaseId]);
 
   useEffect(() => {
     if (!authReady || !selectedKnowledgeBaseId || !hasLiveIngestionWork) {
@@ -813,6 +833,54 @@ export default function AdminPage() {
       });
     } finally {
       setUploadLoading(false);
+    }
+  }
+
+  async function handleRetrievalTest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = retrievalQuestion.trim();
+    if (!retrievalKbId) {
+      setRetrievalNotice({ type: "error", text: "请先选择知识库。" });
+      return;
+    }
+    if (!question) {
+      setRetrievalNotice({ type: "error", text: "请输入测试问题。" });
+      return;
+    }
+
+    setRetrievalLoading(true);
+    setRetrievalNotice(null);
+    setRetrievalResult(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/retrieval/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          knowledge_base_ids: [retrievalKbId],
+          top_k: retrievalTopK,
+        }),
+      });
+      const payload = (await response.json()) as RetrievalTestResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "检索测试失败。",
+        );
+      }
+      setRetrievalResult(payload as RetrievalTestResponse);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "检索测试失败。");
+        return;
+      }
+      setRetrievalNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "检索测试失败。",
+      });
+    } finally {
+      setRetrievalLoading(false);
     }
   }
 
@@ -1723,6 +1791,98 @@ export default function AdminPage() {
             )
           ) : null}
 
+          {activeView === "retrieval-test" ? (
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <h3 className={styles.cardTitle}>检索测试</h3>
+                  <p className={styles.cardSubtitle}>输入问题，查看知识库召回片段、来源和分数。</p>
+                </div>
+              </div>
+
+              <form className={styles.form} onSubmit={handleRetrievalTest}>
+                <label className={styles.label} htmlFor="retrieval-kb">知识库</label>
+                <Select
+                  id="retrieval-kb"
+                  value={retrievalKbId}
+                  onChange={setRetrievalKbId}
+                  options={knowledgeBases.map((item) => ({
+                    value: item.id,
+                    label: `${item.name} (${item.document_count} 个文档)`,
+                  }))}
+                  placeholder="请选择知识库..."
+                />
+
+                <label className={styles.label} htmlFor="retrieval-question">测试问题</label>
+                <textarea
+                  id="retrieval-question"
+                  className={styles.input}
+                  value={retrievalQuestion}
+                  onChange={(event) => setRetrievalQuestion(event.target.value)}
+                  placeholder="输入要测试召回效果的问题..."
+                  rows={4}
+                  style={{ resize: "vertical", minHeight: 96 }}
+                />
+
+                <label className={styles.label} htmlFor="retrieval-top-k">召回片段数</label>
+                <input
+                  id="retrieval-top-k"
+                  className={styles.input}
+                  max={20}
+                  min={1}
+                  onChange={(event) => setRetrievalTopK(Number(event.target.value) || 6)}
+                  type="number"
+                  value={retrievalTopK}
+                />
+
+                <div>
+                  <button className={styles.primaryButton} disabled={retrievalLoading} type="submit">
+                    {retrievalLoading ? "测试中..." : "开始测试"}
+                  </button>
+                </div>
+              </form>
+
+              {retrievalNotice ? <NoticeBox notice={retrievalNotice} /> : null}
+
+              {retrievalResult ? (
+                <section className={styles.statusList}>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>检索范围</span>
+                    <span className={styles.statusValue}>{retrievalResult.knowledge_base_names.join("、")}</span>
+                  </div>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>耗时 / 命中</span>
+                    <span className={styles.statusValue}>
+                      {retrievalResult.duration_ms}ms / {retrievalResult.source_count} 个片段
+                    </span>
+                  </div>
+
+                  {retrievalResult.sources.length ? (
+                    retrievalResult.sources.map((source, index) => (
+                      <article className={styles.messageCard} key={`${source.source || "source"}-${index}`}>
+                        <div className={styles.messageCardHeader}>
+                          <strong>片段 {index + 1} · {formatRetrievalType(source.retrieval_type)}</strong>
+                          <span>score {formatScore(source.score)}</span>
+                        </div>
+                        <div className={styles.messageMeta}>
+                          <span>vector: {formatScore(source.vector_score)}</span>
+                          <span>keyword: {formatScore(source.keyword_score)}</span>
+                          <span>rerank: {formatScore(source.rerank_score)}</span>
+                          <span>source: {source.source || "-"}</span>
+                        </div>
+                        <p className={styles.messageContent} style={{ marginTop: 10 }}>
+                          {source.content}
+                        </p>
+                      </article>
+                    ))
+                  ) : (
+                    <p className={styles.emptyState}>没有召回到片段，可以尝试换个问题或检查文档是否已入库。</p>
+                  )}
+                </section>
+              ) : null}
+            </section>
+          ) : null}
+
           {activeView === "users" ? (
             <section className={styles.card}>
               <div className={styles.cardHeader}>
@@ -2097,6 +2257,23 @@ function formatDocumentStatus(status: string) {
       cancelled: "已取消",
       indexed: "已入库",
     }[status] || status
+  );
+}
+
+function formatScore(score?: number | null) {
+  if (typeof score !== "number") {
+    return "-";
+  }
+  return score.toFixed(3);
+}
+
+function formatRetrievalType(type?: string | null) {
+  return (
+    {
+      vector: "向量召回",
+      keyword: "关键词召回",
+      hybrid: "混合召回",
+    }[type || ""] || type || "-"
   );
 }
 
