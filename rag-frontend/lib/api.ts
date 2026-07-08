@@ -74,6 +74,12 @@ export type RerankSettingsResponse = {
   source: string;
 };
 
+export type RetrievalSettingsResponse = {
+  min_score: number;
+  default_min_score: number;
+  source: string;
+};
+
 export type SessionResponse = {
   id: string;
   title: string;

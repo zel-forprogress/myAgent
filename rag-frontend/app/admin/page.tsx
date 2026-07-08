@@ -22,6 +22,7 @@ import {
   KnowledgeBaseResponse,
   MessageResponse,
   RerankSettingsResponse,
+  RetrievalSettingsResponse,
   RetrievalTestResponse,
   SessionListResponse,
   SessionMessagesResponse,
@@ -156,6 +157,10 @@ export default function AdminPage() {
   const [rerankSettings, setRerankSettings] = useState<RerankSettingsResponse | null>(null);
   const [rerankSettingsNotice, setRerankSettingsNotice] = useState<Notice | null>(null);
   const [savingRerankSettings, setSavingRerankSettings] = useState(false);
+  const [retrievalSettings, setRetrievalSettings] = useState<RetrievalSettingsResponse | null>(null);
+  const [retrievalMinScoreInput, setRetrievalMinScoreInput] = useState("0.45");
+  const [retrievalSettingsNotice, setRetrievalSettingsNotice] = useState<Notice | null>(null);
+  const [savingRetrievalSettings, setSavingRetrievalSettings] = useState(false);
   const [chunkDetailOpen, setChunkDetailOpen] = useState(false);
   const [chunkDetailSource, setChunkDetailSource] = useState("");
   const [chunkDetailDoc, setChunkDetailDoc] = useState("");
@@ -413,7 +418,7 @@ export default function AdminPage() {
         await loadSessionMessages(sessionList[0].id);
       }
 
-      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList), fetchRerankSettings()]);
+      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList), fetchRerankSettings(), fetchRetrievalSettings()]);
       try { await fetchUsers(userPage, USER_PAGE_SIZE); } catch { /* users tab will load on demand */ }
       try { await fetchStats(); } catch { /* stats fail silently */ }
       setAuthReady(true);
@@ -1153,6 +1158,66 @@ export default function AdminPage() {
     }
   }
 
+  async function fetchRetrievalSettings() {
+    const response = await authFetch(`${apiBaseUrl}/admin/settings/retrieval`);
+    const payload = (await response.json()) as RetrievalSettingsResponse | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取检索设置失败。",
+      );
+    }
+    const settings = payload as RetrievalSettingsResponse;
+    setRetrievalSettings(settings);
+    setRetrievalMinScoreInput(settings.min_score.toFixed(2));
+  }
+
+  async function handleSaveRetrievalSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const minScore = Number(retrievalMinScoreInput);
+    if (!Number.isFinite(minScore) || minScore < 0 || minScore > 1) {
+      setRetrievalSettingsNotice({ type: "error", text: "阈值必须在 0 到 1 之间。" });
+      return;
+    }
+
+    setSavingRetrievalSettings(true);
+    setRetrievalSettingsNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/settings/retrieval`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ min_score: minScore }),
+      });
+      const payload = (await response.json()) as RetrievalSettingsResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "保存检索设置失败。",
+        );
+      }
+      const settings = payload as RetrievalSettingsResponse;
+      setRetrievalSettings(settings);
+      setRetrievalMinScoreInput(settings.min_score.toFixed(2));
+      setRetrievalSettingsNotice({
+        type: "success",
+        text: `检索质量阈值已更新为 ${settings.min_score.toFixed(2)}。`,
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "保存检索设置失败。");
+        return;
+      }
+      setRetrievalSettingsNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "保存检索设置失败。",
+      });
+    } finally {
+      setSavingRetrievalSettings(false);
+    }
+  }
+
   async function fetchUsers(page = 1, pageSize = USER_PAGE_SIZE) {
     const response = await authFetch(
       `${apiBaseUrl}/admin/users?page=${page}&page_size=${pageSize}`,
@@ -1443,7 +1508,7 @@ export default function AdminPage() {
                 </button>
               ) : null}
               {activeView === "overview" ? (
-                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats(), fetchRerankSettings()]); } finally { setStatsRefreshing(false); } }} type="button">
+                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats(), fetchRerankSettings(), fetchRetrievalSettings()]); } finally { setStatsRefreshing(false); } }} type="button">
                   {statsRefreshing ? "刷新中..." : "刷新统计"}
                 </button>
               ) : null}
@@ -1504,6 +1569,51 @@ export default function AdminPage() {
                   </div>
                 </div>
                 {rerankSettingsNotice ? <NoticeBox notice={rerankSettingsNotice} /> : null}
+              </section>
+
+              <section className={styles.card} style={{ marginTop: 18 }}>
+                <div className={styles.cardHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>检索质量阈值</h3>
+                    <p className={styles.cardSubtitle}>控制命中片段低于多少分时触发改写或拒答，默认值为 0.45。</p>
+                  </div>
+                </div>
+                <form className={styles.form} onSubmit={handleSaveRetrievalSettings}>
+                  <label className={styles.label} htmlFor="retrieval-min-score">最低可用分数</label>
+                  <input
+                    className={styles.input}
+                    id="retrieval-min-score"
+                    max={1}
+                    min={0}
+                    onChange={(event) => setRetrievalMinScoreInput(event.target.value)}
+                    step={0.01}
+                    type="number"
+                    value={retrievalMinScoreInput}
+                  />
+                  <div className={styles.statusList} style={{ marginTop: 0 }}>
+                    <div className={styles.statusRow}>
+                      <span className={styles.statusLabel}>当前阈值</span>
+                      <span className={styles.statusValue}>{retrievalSettings?.min_score.toFixed(2) ?? "-"}</span>
+                    </div>
+                    <div className={styles.statusRow}>
+                      <span className={styles.statusLabel}>默认值</span>
+                      <span className={styles.statusValue}>{retrievalSettings?.default_min_score.toFixed(2) ?? "0.45"}</span>
+                    </div>
+                    <div className={styles.statusRow}>
+                      <span className={styles.statusLabel}>配置来源</span>
+                      <span className={styles.statusValue}>{retrievalSettings?.source === "database" ? "后台设置" : "系统默认值"}</span>
+                    </div>
+                  </div>
+                  <p className={styles.helperText}>
+                    分数低于阈值会先触发问题改写并重新检索；改写后仍低于阈值时，系统会认为资料不足并拒答。
+                  </p>
+                  <div>
+                    <button className={styles.primaryButton} disabled={savingRetrievalSettings} type="submit">
+                      {savingRetrievalSettings ? "保存中..." : "保存阈值"}
+                    </button>
+                  </div>
+                </form>
+                {retrievalSettingsNotice ? <NoticeBox notice={retrievalSettingsNotice} /> : null}
               </section>
 
               {docError ? <NoticeBox notice={{ type: "error", text: docError }} /> : null}

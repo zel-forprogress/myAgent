@@ -19,9 +19,7 @@ from app.services.rag_service import (
     retrieve_sources_multi,
 )
 from app.services.rerank_service import rerank_sources
-from app.services.settings_service import get_rerank_enabled
-
-MIN_RETRIEVAL_SCORE = 0.45
+from app.services.settings_service import get_rerank_enabled, get_retrieval_min_score
 
 
 class ChatState(TypedDict):
@@ -355,7 +353,7 @@ def retrieve(state: ChatState) -> dict:
 
 def check_retrieval_quality(state: ChatState) -> dict:
     retrieval_quality = "good"
-    if max_source_score(state.get("sources", [])) < MIN_RETRIEVAL_SCORE:
+    if max_source_score(state.get("sources", [])) < get_retrieval_min_score():
         retrieval_quality = "poor"
     return {
         "retrieval_quality": retrieval_quality,
@@ -419,7 +417,7 @@ def retrieve_rewritten(state: ChatState) -> dict:
 
 def check_rewritten_quality(state: ChatState) -> dict:
     retrieval_quality = "rewritten_good"
-    if max_source_score(state.get("sources", [])) < MIN_RETRIEVAL_SCORE:
+    if max_source_score(state.get("sources", [])) < get_retrieval_min_score():
         retrieval_quality = "rewritten_poor"
     return {
         "retrieval_quality": retrieval_quality,
