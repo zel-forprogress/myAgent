@@ -120,6 +120,7 @@ export default function AdminPage() {
   const [taskLoading, setTaskLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [retryingTaskId, setRetryingTaskId] = useState("");
+  const [cancellingTaskId, setCancellingTaskId] = useState("");
   const DOC_PAGE_SIZE = 15;
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [sessionPage, setSessionPage] = useState(1);
@@ -882,6 +883,40 @@ export default function AdminPage() {
     }
   }
 
+  async function handleCancelIngestionTask(task: IngestionTaskResponse) {
+    if (!selectedKnowledgeBase) return;
+    setCancellingTaskId(task.id);
+    setDeleteNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/ingestion/tasks/${encodeURIComponent(task.id)}/cancel`, {
+        method: "POST",
+      });
+      const payload = (await response.json()) as IngestionTaskResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "取消入库任务失败。",
+        );
+      }
+      setDeleteNotice({ type: "success", text: `入库任务已取消：${task.filename || task.source || task.id}。` });
+      await loadDocuments(selectedKnowledgeBase.id);
+      await loadIngestionTasks(selectedKnowledgeBase.id);
+      await loadDocumentCounts(knowledgeBases);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "取消入库任务失败。");
+        return;
+      }
+      setDeleteNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "取消入库任务失败。",
+      });
+    } finally {
+      setCancellingTaskId("");
+    }
+  }
+
   async function handleDeleteDocument(source: string) {
     if (!selectedKnowledgeBase) {
       return;
@@ -1454,7 +1489,17 @@ export default function AdminPage() {
                                 <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
                                 <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
                                 <td>
-                                  {task.status === "failed" ? (
+                                  {isLiveIngestionStatus(task.status) ? (
+                                    <button
+                                      className={styles.deleteButton}
+                                      disabled={cancellingTaskId === task.id}
+                                      onClick={() => void handleCancelIngestionTask(task)}
+                                      style={{ minHeight: 32, padding: "4px 10px", fontSize: 12 }}
+                                      type="button"
+                                    >
+                                      {cancellingTaskId === task.id ? "取消中..." : "取消"}
+                                    </button>
+                                  ) : task.status === "failed" ? (
                                     <button
                                       className={styles.refreshButton}
                                       disabled={retryingTaskId === task.id}
@@ -2014,6 +2059,7 @@ function formatDocumentStatus(status: string) {
       retrying: "重试中",
       success: "已入库",
       failed: "入库失败",
+      cancelled: "已取消",
       indexed: "已入库",
     }[status] || status
   );

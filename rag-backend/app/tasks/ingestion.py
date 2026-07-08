@@ -6,7 +6,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.db import SessionLocal, init_db
 from app.models import IngestionTask
-from app.services.ingestion_pipeline import run_ingestion_pipeline
+from app.services.ingestion_pipeline import IngestionTaskCancelled, run_ingestion_pipeline
 from app.services.ingestion_task_service import update_ingestion_task
 
 
@@ -27,6 +27,8 @@ def process_ingestion_task(self: Task, task_id: str) -> str:
 
         try:
             run_ingestion_pipeline(db, task)
+        except IngestionTaskCancelled:
+            return f"ingestion task {task_id} cancelled"
         except Exception as exc:
             current_retries = int(getattr(self.request, "retries", 0) or 0)
             max_retries = task.max_retries or settings.ingestion_task_max_retries

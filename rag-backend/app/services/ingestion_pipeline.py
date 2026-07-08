@@ -15,12 +15,23 @@ from app.services.rag_service import (
 from app.services.storage_service import get_stored_file_metadata
 
 
+class IngestionTaskCancelled(Exception):
+    pass
+
+
+def ensure_task_active(db: Session, task: IngestionTask) -> None:
+    db.refresh(task)
+    if task.status == "cancelled":
+        raise IngestionTaskCancelled("Ingestion task was cancelled.")
+
+
 def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
     knowledge_base = resolve_knowledge_base(db, task.knowledge_base_id)
     source = task.source
     if not source:
         raise ValueError("Ingestion task source is empty.")
 
+    ensure_task_active(db, task)
     with task_node(db, task, "inspect_document", "Inspecting document text") as details:
         character_count, _ = get_document_character_count(source)
         storage_metadata = get_stored_file_metadata(source)
@@ -32,6 +43,7 @@ def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
             }
         )
 
+    ensure_task_active(db, task)
     with task_node(db, task, "chunk_embed_index", "Chunking, embedding, and indexing") as details:
         chunks, skipped = ingest_document(
             knowledge_base.collection_name,
@@ -67,6 +79,7 @@ def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
     if chunk_status == "failed":
         message = "Document indexing produced no chunks"
 
+    ensure_task_active(db, task)
     return update_ingestion_task(
         db,
         task,

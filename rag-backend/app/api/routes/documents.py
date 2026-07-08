@@ -19,6 +19,7 @@ from app.services.document_service import (
     delete_document_record,
     list_document_infos,
     sync_document_records,
+    update_document_record_status,
     upsert_document_record,
 )
 from app.services.ingestion_task_service import (
@@ -29,7 +30,7 @@ from app.services.ingestion_task_service import (
     task_node,
     update_ingestion_task,
 )
-from app.services.ingestion_queue_service import enqueue_ingestion_task
+from app.services.ingestion_queue_service import enqueue_ingestion_task, revoke_ingestion_task
 from app.services.knowledge_base_service import resolve_knowledge_base
 from app.services.rag_service import (
     detect_file_type,
@@ -329,6 +330,46 @@ def retry_ingestion_task(
         raise
     except Exception as exc:
         logger.exception("Retry ingestion task failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/ingestion/tasks/{task_id}/cancel", response_model=IngestionTaskResponse)
+def cancel_ingestion_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> IngestionTaskResponse:
+    try:
+        _ = current_user
+        task = get_ingestion_task(db, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Ingestion task not found")
+        if task.status not in {"pending", "queued", "running", "retrying"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Only pending, queued, running, or retrying ingestion tasks can be cancelled",
+            )
+
+        revoke_ingestion_task(db, task)
+        update_document_record_status(
+            db,
+            knowledge_base_id=task.knowledge_base_id,
+            source=task.source,
+            status="cancelled",
+        )
+        task = update_ingestion_task(
+            db,
+            task,
+            status="cancelled",
+            current_node="cancel",
+            message="Ingestion task cancelled",
+            error="",
+        )
+        return serialize_ingestion_task(task, include_logs=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Cancel ingestion task failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

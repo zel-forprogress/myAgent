@@ -47,3 +47,32 @@ def enqueue_ingestion_task(db: Session, task: IngestionTask) -> IngestionTask:
         queue_job_id=async_result.id,
         error="",
     )
+
+
+def revoke_ingestion_task(db: Session, task: IngestionTask) -> None:
+    if not task.queue_job_id:
+        return
+
+    try:
+        from app.core.celery_app import celery_app
+
+        celery_app.control.revoke(task.queue_job_id, terminate=True, signal="SIGTERM")
+    except Exception as exc:
+        add_task_log(
+            db,
+            task,
+            node_name="cancel",
+            status="failed",
+            message="Failed to revoke queued ingestion task",
+            error=str(exc),
+        )
+        raise
+
+    add_task_log(
+        db,
+        task,
+        node_name="cancel",
+        status="success",
+        message="Ingestion task cancelled",
+        details={"queue_job_id": task.queue_job_id},
+    )

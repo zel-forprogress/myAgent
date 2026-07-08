@@ -9,7 +9,7 @@ from app.schemas import DocumentInfo
 from app.services.rag_service import list_documents as list_documents_from_collection
 
 
-IN_PROGRESS_DOCUMENT_STATUSES = {"pending", "queued", "running", "retrying", "failed"}
+IN_PROGRESS_DOCUMENT_STATUSES = {"pending", "queued", "running", "retrying", "failed", "cancelled"}
 
 
 def _parse_uploaded_at(value: str) -> datetime:
@@ -171,6 +171,32 @@ def list_document_infos(
         _to_schema(record)
         for record in list_document_records(db, knowledge_base_id, offset=offset, limit=limit)
     ]
+
+
+def update_document_record_status(
+    db: Session,
+    *,
+    knowledge_base_id: str,
+    source: str,
+    status: str,
+) -> KnowledgeBaseDocument | None:
+    record = (
+        db.query(KnowledgeBaseDocument)
+        .filter(
+            KnowledgeBaseDocument.knowledge_base_id == knowledge_base_id,
+            KnowledgeBaseDocument.source == source,
+        )
+        .first()
+    )
+    if record is None:
+        return None
+
+    record.status = status
+    record.updated_at = datetime.utcnow()
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 def delete_document_record(
