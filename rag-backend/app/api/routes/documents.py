@@ -34,7 +34,7 @@ from app.services.ingestion_task_service import (
     update_ingestion_task,
 )
 from app.services.ingestion_queue_service import enqueue_ingestion_task, revoke_ingestion_task
-from app.services.knowledge_base_service import resolve_knowledge_base
+from app.services.knowledge_base_service import resolve_knowledge_base, resolve_knowledge_bases
 from app.services.rag_service import (
     detect_file_type,
     delete_document,
