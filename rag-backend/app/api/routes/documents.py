@@ -45,7 +45,7 @@ from app.services.rag_service import (
     normalize_source,
     retrieve_sources_multi,
 )
-from app.services.rerank_service import rerank_sources
+from app.services.rerank_service import get_rerank_endpoint, rerank_sources
 from app.services.storage_service import (
     delete_stored_file,
     get_stored_file_metadata,
@@ -109,6 +109,8 @@ def test_retrieval(
             candidate_count=len(candidate_sources),
             rerank_enabled=rerank_enabled,
             rerank_applied=rerank_applied,
+            rerank_model=settings.rerank_model if rerank_enabled else "",
+            rerank_endpoint=get_rerank_endpoint() if rerank_enabled else "",
             rerank_error=rerank_error,
             sources=sources,
         )

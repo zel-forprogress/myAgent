@@ -59,6 +59,8 @@ export type RetrievalTestResponse = {
   candidate_count: number;
   rerank_enabled: boolean;
   rerank_applied: boolean;
+  rerank_model: string;
+  rerank_endpoint: string;
   rerank_error: string;
   sources: SourceChunk[];
 };

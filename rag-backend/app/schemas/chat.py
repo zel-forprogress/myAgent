@@ -51,6 +51,8 @@ class RetrievalTestResponse(BaseModel):
     candidate_count: int = 0
     rerank_enabled: bool = False
     rerank_applied: bool = False
+    rerank_model: str = ""
+    rerank_endpoint: str = ""
     rerank_error: str = ""
     sources: List[SourceChunk]
 

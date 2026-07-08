@@ -1878,6 +1878,14 @@ export default function AdminPage() {
                         : "未启用"}
                     </span>
                   </div>
+                  {retrievalResult.rerank_enabled ? (
+                    <div className={styles.statusRow}>
+                      <span className={styles.statusLabel}>Rerank 模型</span>
+                      <span className={styles.statusValue}>
+                        {retrievalResult.rerank_model || "-"} · {retrievalResult.rerank_endpoint || "-"}
+                      </span>
+                    </div>
+                  ) : null}
 
                   {retrievalResult.sources.length ? (
                     retrievalResult.sources.map((source, index) => (

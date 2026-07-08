@@ -19,7 +19,14 @@ class RerankResult:
 def _rerank_url() -> str:
     if settings.rerank_base_url:
         return settings.rerank_base_url.rstrip("/")
-    return f"{settings.openai_base_url.rstrip('/')}/reranks"
+    base_url = settings.openai_base_url.rstrip("/")
+    if base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1":
+        return "https://dashscope.aliyuncs.com/compatible-api/v1/reranks"
+    return f"{base_url}/reranks"
+
+
+def get_rerank_endpoint() -> str:
+    return _rerank_url()
 
 
 def _extract_rerank_index(item: dict) -> int | None:
