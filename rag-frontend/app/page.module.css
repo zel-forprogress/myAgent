@@ -1104,6 +1104,11 @@
   background: #dbeafe;
 }
 
+.retrievalTypeRerank {
+  color: #6d28d9;
+  background: #f3e8ff;
+}
+
 .sourceContent {
   margin: 0;
   color: var(--body);

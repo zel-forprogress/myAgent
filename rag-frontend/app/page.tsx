@@ -643,7 +643,10 @@ export default function HomePage() {
                     <div className={styles.sourceMeta}>
                       <span className={styles.sourcePath}>{source.source || common.unknownSource}</span>
                       <span className={styles.sourceMetaActions}>
-                        <RetrievalTypeBadge type={source.retrieval_type} />
+                        <RetrievalTypeBadge
+                          rerankScore={source.rerank_score}
+                          type={source.retrieval_type}
+                        />
                       </span>
                     </div>
                     <div className={styles.sourceScoreGrid}>
@@ -708,7 +711,20 @@ const RETRIEVAL_TYPE_MAP: Record<string, { label: string; className: string }> =
   hybrid: { label: "混合", className: styles.retrievalTypeHybrid },
 };
 
-function RetrievalTypeBadge({ type }: { type?: string | null }) {
+function RetrievalTypeBadge({
+  rerankScore,
+  type,
+}: {
+  rerankScore?: number | null;
+  type?: string | null;
+}) {
+  if (typeof rerankScore === "number") {
+    return (
+      <span className={`${styles.retrievalTypeBadge} ${styles.retrievalTypeRerank}`}>
+        已重排
+      </span>
+    );
+  }
   const meta = RETRIEVAL_TYPE_MAP[type || ""];
   if (!meta) return null;
   return (
