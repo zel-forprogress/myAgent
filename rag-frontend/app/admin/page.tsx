@@ -49,7 +49,9 @@ type DocumentSearchResult = {
   knowledgeBase: KnowledgeBaseResponse;
 };
 
+const LIVE_INGESTION_STATUSES = new Set(["pending", "queued", "running", "retrying"]);
 const KNOWLEDGE_BASE_PAGE_SIZE = 6;
+const INGESTION_POLL_INTERVAL_MS = 3000;
 
 type AdminView =
   | "overview"
@@ -254,6 +256,13 @@ export default function AdminPage() {
     [activeView],
   );
 
+  const hasLiveIngestionWork = useMemo(
+    () =>
+      documents.some((document) => isLiveIngestionStatus(document.status)) ||
+      ingestionTasks.some((task) => isLiveIngestionStatus(task.status)),
+    [documents, ingestionTasks],
+  );
+
   useEffect(() => {
     void bootstrapAdmin();
   }, []);
@@ -264,6 +273,33 @@ export default function AdminPage() {
       void loadIngestionTasks(selectedKnowledgeBaseId);
     }
   }, [authReady, selectedKnowledgeBaseId, docPage]);
+
+  useEffect(() => {
+    if (!authReady || !selectedKnowledgeBaseId || !hasLiveIngestionWork) {
+      return;
+    }
+
+    let cancelled = false;
+    const refreshIngestionState = async () => {
+      if (cancelled) {
+        return;
+      }
+      await Promise.all([
+        loadDocuments(selectedKnowledgeBaseId),
+        loadIngestionTasks(selectedKnowledgeBaseId),
+        loadDocumentCounts(knowledgeBases),
+      ]);
+    };
+
+    const timer = window.setInterval(() => {
+      void refreshIngestionState();
+    }, INGESTION_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [authReady, selectedKnowledgeBaseId, hasLiveIngestionWork, docPage, knowledgeBases]);
 
   useEffect(() => {
     const query = knowledgeBaseQuery.trim().toLocaleLowerCase();
@@ -1930,6 +1966,10 @@ function formatDocumentStatus(status: string) {
       indexed: "已入库",
     }[status] || status
   );
+}
+
+function isLiveIngestionStatus(status: string) {
+  return LIVE_INGESTION_STATUSES.has(status);
 }
 
 function formatTaskType(type: string) {
