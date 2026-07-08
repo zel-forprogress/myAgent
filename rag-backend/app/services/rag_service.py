@@ -251,7 +251,7 @@ def normalize_retrieval_score(score: float | None) -> float:
     return max(0.0, min(float(score), 1.0))
 
 
-def calculate_rerank_score(source: SourceChunk) -> float:
+def calculate_retrieval_score(source: SourceChunk) -> float:
     vector_score = normalize_retrieval_score(source.vector_score)
     keyword_score_value = normalize_retrieval_score(source.keyword_score)
 
@@ -279,8 +279,7 @@ def merge_source_scores(existing: SourceChunk, incoming: SourceChunk) -> SourceC
     elif existing.keyword_score:
         existing.retrieval_type = "keyword"
 
-    existing.rerank_score = calculate_rerank_score(existing)
-    existing.score = existing.rerank_score
+    existing.score = calculate_retrieval_score(existing)
     return existing
 
 
@@ -587,7 +586,6 @@ def retrieve_sources(
             source=hit["entity"].get("source"),
             score=vector_score * 0.7,
             vector_score=vector_score,
-            rerank_score=vector_score * 0.7,
             retrieval_type="vector",
         )
         sources.append(source)
@@ -633,11 +631,10 @@ def retrieve_keyword_sources(
                     source=row.source,
                     score=score * 0.3,
                     keyword_score=score,
-                    rerank_score=score * 0.3,
                     retrieval_type="keyword",
                 )
             )
-        sources.sort(key=lambda item: item.rerank_score or item.score or 0.0, reverse=True)
+        sources.sort(key=lambda item: item.score or 0.0, reverse=True)
         return sources[:top_k]
     finally:
         db.close()
@@ -684,15 +681,14 @@ def retrieve_sources_multi(
         key = (source.source or "", source.content)
         existing = deduplicated_by_chunk.get(key)
         if existing is None:
-            source.rerank_score = calculate_rerank_score(source)
-            source.score = source.rerank_score
+            source.score = calculate_retrieval_score(source)
             deduplicated_by_chunk[key] = source
             continue
 
         deduplicated_by_chunk[key] = merge_source_scores(existing, source)
 
     deduplicated_sources = list(deduplicated_by_chunk.values())
-    deduplicated_sources.sort(key=lambda item: item.rerank_score or item.score or 0.0, reverse=True)
+    deduplicated_sources.sort(key=lambda item: item.score or 0.0, reverse=True)
     return deduplicated_sources[:top_k]
 
 

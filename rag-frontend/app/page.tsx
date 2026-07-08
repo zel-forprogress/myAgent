@@ -647,7 +647,8 @@ export default function HomePage() {
                       </span>
                     </div>
                     <div className={styles.sourceScoreGrid}>
-                      <ScoreItem label="最终分" value={source.rerank_score ?? source.score} />
+                      <ScoreItem label="最终分" value={source.score} />
+                      <ScoreItem label="Rerank 分" value={source.rerank_score} />
                       <ScoreItem label="向量分" value={source.vector_score} />
                       <ScoreItem label="关键词分" value={source.keyword_score} />
                     </div>
