@@ -119,6 +119,7 @@ export default function AdminPage() {
   const [ingestionTasks, setIngestionTasks] = useState<IngestionTaskResponse[]>([]);
   const [taskLoading, setTaskLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [retryingTaskId, setRetryingTaskId] = useState("");
   const DOC_PAGE_SIZE = 15;
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [sessionPage, setSessionPage] = useState(1);
@@ -847,6 +848,40 @@ export default function AdminPage() {
     }
   }
 
+  async function handleRetryIngestionTask(task: IngestionTaskResponse) {
+    if (!selectedKnowledgeBase) return;
+    setRetryingTaskId(task.id);
+    setDeleteNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/ingestion/tasks/${encodeURIComponent(task.id)}/retry`, {
+        method: "POST",
+      });
+      const payload = (await response.json()) as IngestionTaskResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "重试入库任务失败。",
+        );
+      }
+      setDeleteNotice({ type: "success", text: `重试任务已提交：${task.filename || task.source || task.id}。` });
+      await loadDocuments(selectedKnowledgeBase.id);
+      await loadIngestionTasks(selectedKnowledgeBase.id);
+      await loadDocumentCounts(knowledgeBases);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "重试入库任务失败。");
+        return;
+      }
+      setDeleteNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "重试入库任务失败。",
+      });
+    } finally {
+      setRetryingTaskId("");
+    }
+  }
+
   async function handleDeleteDocument(source: string) {
     if (!selectedKnowledgeBase) {
       return;
@@ -1403,6 +1438,7 @@ export default function AdminPage() {
                               <th>状态</th>
                               <th>Chunks</th>
                               <th>创建时间</th>
+                              <th>操作</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1417,6 +1453,21 @@ export default function AdminPage() {
                                 <td><span className={styles.statusBadge}>{formatTaskStatus(task.status)}</span></td>
                                 <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
                                 <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
+                                <td>
+                                  {task.status === "failed" ? (
+                                    <button
+                                      className={styles.refreshButton}
+                                      disabled={retryingTaskId === task.id}
+                                      onClick={() => void handleRetryIngestionTask(task)}
+                                      style={{ marginTop: 0, minHeight: 32, padding: "4px 10px", fontSize: 12 }}
+                                      type="button"
+                                    >
+                                      {retryingTaskId === task.id ? "提交中..." : "重试"}
+                                    </button>
+                                  ) : (
+                                    <span className={styles.helper}>-</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

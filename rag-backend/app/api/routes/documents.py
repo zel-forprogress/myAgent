@@ -299,6 +299,39 @@ def ingestion_task_detail(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/ingestion/tasks/{task_id}/retry", response_model=IngestionTaskResponse)
+def retry_ingestion_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> IngestionTaskResponse:
+    try:
+        _ = current_user
+        task = get_ingestion_task(db, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Ingestion task not found")
+        if task.status not in {"failed"}:
+            raise HTTPException(status_code=400, detail="Only failed ingestion tasks can be retried")
+        update_ingestion_task(
+            db,
+            task,
+            status="pending",
+            current_node="retry",
+            message="Retry requested",
+            chunks=0,
+            skipped=0,
+            retry_count=0,
+            error="",
+        )
+        task = enqueue_ingestion_task(db, task)
+        return serialize_ingestion_task(task, include_logs=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Retry ingestion task failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.post("/documents/chunk", response_model=IngestResponse)
 def chunk_document(
     request: DeleteDocumentRequest,
