@@ -65,6 +65,13 @@ export type RetrievalTestResponse = {
   sources: SourceChunk[];
 };
 
+export type RerankSettingsResponse = {
+  enabled: boolean;
+  model: string;
+  endpoint: string;
+  source: string;
+};
+
 export type SessionResponse = {
   id: string;
   title: string;

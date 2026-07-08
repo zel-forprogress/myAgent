@@ -21,6 +21,7 @@ import {
   IngestionTaskResponse,
   KnowledgeBaseResponse,
   MessageResponse,
+  RerankSettingsResponse,
   RetrievalTestResponse,
   SessionListResponse,
   SessionMessagesResponse,
@@ -152,6 +153,9 @@ export default function AdminPage() {
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalNotice, setRetrievalNotice] = useState<Notice | null>(null);
   const [retrievalResult, setRetrievalResult] = useState<RetrievalTestResponse | null>(null);
+  const [rerankSettings, setRerankSettings] = useState<RerankSettingsResponse | null>(null);
+  const [rerankSettingsNotice, setRerankSettingsNotice] = useState<Notice | null>(null);
+  const [savingRerankSettings, setSavingRerankSettings] = useState(false);
   const [chunkDetailOpen, setChunkDetailOpen] = useState(false);
   const [chunkDetailSource, setChunkDetailSource] = useState("");
   const [chunkDetailDoc, setChunkDetailDoc] = useState("");
@@ -409,7 +413,7 @@ export default function AdminPage() {
         await loadSessionMessages(sessionList[0].id);
       }
 
-      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList)]);
+      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList), fetchRerankSettings()]);
       try { await fetchUsers(userPage, USER_PAGE_SIZE); } catch { /* users tab will load on demand */ }
       try { await fetchStats(); } catch { /* stats fail silently */ }
       setAuthReady(true);
@@ -1096,6 +1100,59 @@ export default function AdminPage() {
     setAdminStats((await response.json()) as AdminStats);
   }
 
+  async function fetchRerankSettings() {
+    const response = await authFetch(`${apiBaseUrl}/admin/settings/rerank`);
+    const payload = (await response.json()) as RerankSettingsResponse | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取 Rerank 设置失败。",
+      );
+    }
+    const settings = payload as RerankSettingsResponse;
+    setRerankSettings(settings);
+    setRetrievalUseRerank(settings.enabled);
+  }
+
+  async function handleToggleRerank(enabled: boolean) {
+    setSavingRerankSettings(true);
+    setRerankSettingsNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/settings/rerank`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const payload = (await response.json()) as RerankSettingsResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "保存 Rerank 设置失败。",
+        );
+      }
+      const settings = payload as RerankSettingsResponse;
+      setRerankSettings(settings);
+      setRetrievalUseRerank(settings.enabled);
+      setRerankSettingsNotice({
+        type: "success",
+        text: settings.enabled ? "Rerank 已在正式问答中启用。" : "Rerank 已在正式问答中关闭。",
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "保存 Rerank 设置失败。");
+        return;
+      }
+      setRerankSettingsNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "保存 Rerank 设置失败。",
+      });
+    } finally {
+      setSavingRerankSettings(false);
+    }
+  }
+
   async function fetchUsers(page = 1, pageSize = USER_PAGE_SIZE) {
     const response = await authFetch(
       `${apiBaseUrl}/admin/users?page=${page}&page_size=${pageSize}`,
@@ -1386,7 +1443,7 @@ export default function AdminPage() {
                 </button>
               ) : null}
               {activeView === "overview" ? (
-                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats()]); } finally { setStatsRefreshing(false); } }} type="button">
+                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats(), fetchRerankSettings()]); } finally { setStatsRefreshing(false); } }} type="button">
                   {statsRefreshing ? "刷新中..." : "刷新统计"}
                 </button>
               ) : null}
@@ -1407,6 +1464,46 @@ export default function AdminPage() {
                 <OverviewMetric icon="upload" label="存储用量" value={adminStats ? `${(adminStats.documents.size / 1024).toFixed(1)} KB` : "-"} />
                 <OverviewMetric icon="grid" label="服务状态" value={health === "ok" ? "正常" : health} />
                 <OverviewMetric icon="layers" label="Milvus 集合数" value={adminStats ? String(adminStats.milvus.collections) : "-"} />
+              </section>
+
+              <section className={styles.card} style={{ marginTop: 18 }}>
+                <div className={styles.cardHeader}>
+                  <div>
+                    <h3 className={styles.cardTitle}>Rerank 全局开关</h3>
+                    <p className={styles.cardSubtitle}>控制正式聊天回答是否使用重排模型，检索测试默认跟随这个开关。</p>
+                  </div>
+                  <button
+                    className={rerankSettings?.enabled ? styles.primaryButton : styles.backButton}
+                    disabled={!rerankSettings || savingRerankSettings}
+                    onClick={() => void handleToggleRerank(!rerankSettings?.enabled)}
+                    type="button"
+                  >
+                    {savingRerankSettings
+                      ? "保存中..."
+                      : rerankSettings?.enabled
+                        ? "关闭 Rerank"
+                        : "开启 Rerank"}
+                  </button>
+                </div>
+                <div className={styles.statusList}>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>当前状态</span>
+                    <span className={styles.statusValue}>{rerankSettings?.enabled ? "已开启" : "已关闭"}</span>
+                  </div>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>模型</span>
+                    <span className={styles.statusValue}>{rerankSettings?.model || "-"}</span>
+                  </div>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>接口</span>
+                    <span className={styles.statusValue}>{rerankSettings?.endpoint || "-"}</span>
+                  </div>
+                  <div className={styles.statusRow}>
+                    <span className={styles.statusLabel}>配置来源</span>
+                    <span className={styles.statusValue}>{rerankSettings?.source === "database" ? "后台设置" : "环境变量默认值"}</span>
+                  </div>
+                </div>
+                {rerankSettingsNotice ? <NoticeBox notice={rerankSettingsNotice} /> : null}
               </section>
 
               {docError ? <NoticeBox notice={{ type: "error", text: docError }} /> : null}

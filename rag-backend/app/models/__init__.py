@@ -1,3 +1,4 @@
+from app.models.app_setting import AppSetting
 from app.models.chat import ChatMessage, ChatSession
 from app.models.document import (
     IngestionTask,
@@ -11,6 +12,7 @@ from app.models.user import User
 __all__ = [
     "ChatMessage",
     "ChatSession",
+    "AppSetting",
     "IngestionTask",
     "IngestionTaskLog",
     "KnowledgeBase",

@@ -18,6 +18,8 @@ from app.services.rag_service import (
     get_llm,
     retrieve_sources_multi,
 )
+from app.services.rerank_service import rerank_sources
+from app.services.settings_service import get_rerank_enabled
 
 MIN_RETRIEVAL_SCORE = 0.45
 
@@ -161,6 +163,33 @@ def retrieval_question(state: ChatState) -> str:
     return state.get("rewritten_question") or state.get("standalone_question") or state["question"]
 
 
+def retrieve_with_optional_rerank(state: ChatState, question: str) -> List[SourceChunk]:
+    top_k = state["top_k"]
+    candidate_top_k = top_k
+    rerank_enabled = get_rerank_enabled()
+    if rerank_enabled:
+        candidate_top_k = min(
+            max(top_k * max(1, settings.rerank_candidate_multiplier), top_k),
+            50,
+        )
+
+    sources = retrieve_sources_multi(
+        collection_names=state["collection_names"],
+        question=question,
+        top_k=candidate_top_k,
+    )
+
+    if not rerank_enabled:
+        return sources[:top_k]
+
+    rerank_result = rerank_sources(
+        question=question,
+        sources=sources,
+        top_k=top_k,
+    )
+    return rerank_result.sources
+
+
 def complete_question_with_history(state: ChatState) -> dict:
     question = state["question"].strip()
     chat_history = state.get("chat_history", "").strip()
@@ -265,11 +294,7 @@ def route_question(state: ChatState) -> str:
 
 
 def retrieve(state: ChatState) -> dict:
-    sources = retrieve_sources_multi(
-        collection_names=state["collection_names"],
-        question=retrieval_question(state),
-        top_k=state["top_k"],
-    )
+    sources = retrieve_with_optional_rerank(state, retrieval_question(state))
     return {"sources": sources, "steps": append_step(state, "retrieve")}
 
 
@@ -333,11 +358,7 @@ def rewrite_question(state: ChatState) -> dict:
 
 def retrieve_rewritten(state: ChatState) -> dict:
     query = state.get("rewritten_question") or state["question"]
-    sources = retrieve_sources_multi(
-        collection_names=state["collection_names"],
-        question=query,
-        top_k=state["top_k"],
-    )
+    sources = retrieve_with_optional_rerank(state, query)
     return {"sources": sources, "steps": append_step(state, "retrieve_rewritten")}
 
 
