@@ -513,11 +513,20 @@ export default function AdminPage() {
       }
       const tasks = (payload as IngestionTaskListResponse).tasks;
       setIngestionTasks(tasks);
-      setSelectedTaskId((current) =>
-        current && tasks.some((item) => item.id === current)
-          ? current
-          : tasks[0]?.id || "",
-      );
+      setSelectedTaskId((current) => {
+        const currentTask = tasks.find((item) => item.id === current);
+        if (currentTask && isLiveIngestionStatus(currentTask.status)) {
+          return current;
+        }
+        const liveTask = tasks.find((item) => isLiveIngestionStatus(item.status));
+        if (liveTask) {
+          return liveTask.id;
+        }
+        if (currentTask) {
+          return current;
+        }
+        return tasks[0]?.id || "";
+      });
     } catch {
       setIngestionTasks([]);
       setSelectedTaskId("");
@@ -1471,9 +1480,9 @@ export default function AdminPage() {
                               <th>任务</th>
                               <th>类型</th>
                               <th>状态</th>
+                              <th>操作</th>
                               <th>Chunks</th>
                               <th>创建时间</th>
-                              <th>操作</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1486,8 +1495,6 @@ export default function AdminPage() {
                                 </td>
                                 <td>{formatTaskType(task.task_type)}</td>
                                 <td><span className={styles.statusBadge}>{formatTaskStatus(task.status)}</span></td>
-                                <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
-                                <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
                                 <td>
                                   {isLiveIngestionStatus(task.status) ? (
                                     <button
@@ -1513,6 +1520,8 @@ export default function AdminPage() {
                                     <span className={styles.helper}>-</span>
                                   )}
                                 </td>
+                                <td>{task.chunks}{task.skipped ? ` / 跳过 ${task.skipped}` : ""}</td>
+                                <td>{new Date(task.created_at).toLocaleString("zh-CN")}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1520,7 +1529,30 @@ export default function AdminPage() {
                       </div>
 
                       <div className={styles.messageViewer}>
-                        <h3 className={styles.viewerTitle}>{selectedTask ? `${selectedTask.filename || selectedTask.source} 的节点日志` : "节点日志"}</h3>
+                        <div className={styles.cardHeader} style={{ borderBottom: "none", minHeight: 32 }}>
+                          <h3 className={styles.viewerTitle}>{selectedTask ? `${selectedTask.filename || selectedTask.source} 的节点日志` : "节点日志"}</h3>
+                          {selectedTask && isLiveIngestionStatus(selectedTask.status) ? (
+                            <button
+                              className={styles.deleteButton}
+                              disabled={cancellingTaskId === selectedTask.id}
+                              onClick={() => void handleCancelIngestionTask(selectedTask)}
+                              style={{ minHeight: 32, padding: "4px 10px", fontSize: 12 }}
+                              type="button"
+                            >
+                              {cancellingTaskId === selectedTask.id ? "取消中..." : "取消任务"}
+                            </button>
+                          ) : selectedTask?.status === "failed" ? (
+                            <button
+                              className={styles.refreshButton}
+                              disabled={retryingTaskId === selectedTask.id}
+                              onClick={() => void handleRetryIngestionTask(selectedTask)}
+                              style={{ marginTop: 0, minHeight: 32, padding: "4px 10px", fontSize: 12 }}
+                              type="button"
+                            >
+                              {retryingTaskId === selectedTask.id ? "提交中..." : "重试任务"}
+                            </button>
+                          ) : null}
+                        </div>
                         {selectedTask ? (
                           <div className={styles.messageList}>
                             <div className={styles.messageMeta}>
