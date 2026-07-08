@@ -796,9 +796,12 @@ export default function AdminPage() {
           .replace("{file_type}", successPayload.file_type),
       });
       setSelectedFile(null);
-      await loadDocuments(selectedKnowledgeBase.id);
-      await loadIngestionTasks(selectedKnowledgeBase.id);
-      await loadDocumentCounts(knowledgeBases);
+      setUploadModalOpen(false);
+      void Promise.all([
+        loadDocuments(selectedKnowledgeBase.id),
+        loadIngestionTasks(selectedKnowledgeBase.id),
+        loadDocumentCounts(knowledgeBases),
+      ]);
     } catch (error) {
       if (error instanceof AuthError) {
         handleAuthAwareError(error, adminMessages.upload.uploadFailed);
@@ -1363,11 +1366,11 @@ export default function AdminPage() {
                   open={uploadModalOpen}
                   title="上传文档"
                   subtitle="选择文件上传到当前知识库，支持 .txt .md .pdf .docx"
-                  onClose={() => { setUploadModalOpen(false); setSelectedFile(null); }}
+                  onClose={() => { if (!uploadLoading) { setUploadModalOpen(false); setSelectedFile(null); } }}
                   actions={
                     <>
-                      <button className={styles.backButton} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
-                      <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload().then(() => setUploadModalOpen(false)); }} type="button">
+                      <button className={styles.backButton} disabled={uploadLoading} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
+                      <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload(); }} type="button">
                         {uploadLoading ? "上传中..." : "上传"}
                       </button>
                     </>
