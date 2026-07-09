@@ -44,10 +44,19 @@ export type ChatResponse = {
   route: string;
   task_intent: string;
   task_confidence: number;
+  agent_plan: string[];
+  tool_calls: AgentToolCall[];
   steps: string[];
   retrieval_quality: string;
   rewritten_question: string;
   standalone_question: string;
+};
+
+export type AgentToolCall = {
+  name: string;
+  status: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
 };
 
 export type RetrievalTestResponse = {
@@ -158,6 +167,8 @@ export type MessageResponse = {
   route: string;
   task_intent: string;
   task_confidence: number;
+  agent_plan: string[];
+  tool_calls: AgentToolCall[];
   retrieval_quality: string;
   rewritten_question: string;
   standalone_question: string;

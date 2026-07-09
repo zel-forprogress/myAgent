@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,8 @@ class ChatResponse(BaseModel):
     route: str = ""
     task_intent: str = ""
     task_confidence: float = 0.0
+    agent_plan: List[str] = []
+    tool_calls: List[dict[str, Any]] = []
     steps: List[str] = []
     retrieval_quality: str = ""
     rewritten_question: str = ""
@@ -67,6 +69,8 @@ class MessageResponse(BaseModel):
     route: str = ""
     task_intent: str = ""
     task_confidence: float = 0.0
+    agent_plan: List[str] = []
+    tool_calls: List[dict[str, Any]] = []
     retrieval_quality: str = ""
     rewritten_question: str = ""
     standalone_question: str = ""

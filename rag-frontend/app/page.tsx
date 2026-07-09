@@ -44,6 +44,8 @@ function emptyChatResult(answer = ""): ChatResponse {
     route: "",
     task_intent: "",
     task_confidence: 0,
+    agent_plan: [],
+    tool_calls: [],
     steps: [],
     retrieval_quality: "",
     rewritten_question: "",
@@ -139,7 +141,7 @@ export default function HomePage() {
   // ========================== Logic (unchanged) ==========================
 
   function buildTempMessage(id: number, role: "user" | "assistant", content: string): MessageResponse {
-    return { id, session_id: currentSessionId, role, content, route: "", task_intent: "", task_confidence: 0, retrieval_quality: "", rewritten_question: "", standalone_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
+    return { id, session_id: currentSessionId, role, content, route: "", task_intent: "", task_confidence: 0, agent_plan: [], tool_calls: [], retrieval_quality: "", rewritten_question: "", standalone_question: "", source_count: 0, sources: [], steps: [], created_at: new Date().toISOString() };
   }
 
   function updateTempAssistantMessage(tempId: number, content: string) {
@@ -221,7 +223,7 @@ export default function HomePage() {
       setSelectedKnowledgeBaseIds(chosenIds);
       const latestAssistant = [...payload.messages].reverse().find((item) => item.role === "assistant");
       if (latestAssistant) {
-        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, task_intent: latestAssistant.task_intent, task_confidence: latestAssistant.task_confidence, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question, standalone_question: latestAssistant.standalone_question });
+        setResult({ answer: latestAssistant.content, sources: latestAssistant.sources, route: latestAssistant.route, task_intent: latestAssistant.task_intent, task_confidence: latestAssistant.task_confidence, agent_plan: latestAssistant.agent_plan, tool_calls: latestAssistant.tool_calls, steps: latestAssistant.steps, retrieval_quality: latestAssistant.retrieval_quality, rewritten_question: latestAssistant.rewritten_question, standalone_question: latestAssistant.standalone_question });
       } else {
         setResult(null);
       }
@@ -337,12 +339,45 @@ export default function HomePage() {
           const eventPayload = JSON.parse(line) as StreamEvent;
           if (eventPayload.type === "step") {
             const step = String(eventPayload.data.step ?? "");
-            setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, route: String(eventPayload.data.route ?? "") || base.route, task_intent: String(eventPayload.data.task_intent ?? "") || base.task_intent, task_confidence: Number(eventPayload.data.task_confidence ?? base.task_confidence) || base.task_confidence, retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality, steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps }; });
+            setResult((current) => {
+              const base = current ?? emptyChatResult(answerBuffer);
+              const nextPlan = Array.isArray(eventPayload.data.agent_plan)
+                ? (eventPayload.data.agent_plan as string[])
+                : base.agent_plan;
+              const nextToolCalls = Array.isArray(eventPayload.data.tool_calls)
+                ? (eventPayload.data.tool_calls as ChatResponse["tool_calls"])
+                : base.tool_calls;
+              return {
+                ...base,
+                answer: answerBuffer,
+                route: String(eventPayload.data.route ?? "") || base.route,
+                task_intent: String(eventPayload.data.task_intent ?? "") || base.task_intent,
+                task_confidence: Number(eventPayload.data.task_confidence ?? base.task_confidence) || base.task_confidence,
+                agent_plan: nextPlan,
+                tool_calls: nextToolCalls,
+                retrieval_quality: String(eventPayload.data.retrieval_quality ?? "") || base.retrieval_quality,
+                steps: step && !base.steps.includes(step) ? [...base.steps, step] : base.steps,
+              };
+            });
           } else if (eventPayload.type === "sources") {
             const nextSources = Array.isArray(eventPayload.data.sources) ? (eventPayload.data.sources as ChatResponse["sources"]) : [];
             setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, sources: nextSources }; });
           } else if (eventPayload.type === "meta") {
-            setResult((current) => { const base = current ?? emptyChatResult(answerBuffer); return { ...base, answer: answerBuffer, rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question, standalone_question: String(eventPayload.data.standalone_question ?? "") || base.standalone_question }; });
+            setResult((current) => {
+              const base = current ?? emptyChatResult(answerBuffer);
+              return {
+                ...base,
+                answer: answerBuffer,
+                agent_plan: Array.isArray(eventPayload.data.agent_plan)
+                  ? (eventPayload.data.agent_plan as string[])
+                  : base.agent_plan,
+                tool_calls: Array.isArray(eventPayload.data.tool_calls)
+                  ? (eventPayload.data.tool_calls as ChatResponse["tool_calls"])
+                  : base.tool_calls,
+                rewritten_question: String(eventPayload.data.rewritten_question ?? "") || base.rewritten_question,
+                standalone_question: String(eventPayload.data.standalone_question ?? "") || base.standalone_question,
+              };
+            });
           } else if (eventPayload.type === "token") {
             const content = String(eventPayload.data.content ?? "");
             if (!content) continue;
@@ -630,6 +665,37 @@ export default function HomePage() {
             <StatusBadge label="Sources" value={String(result?.sources.length ?? 0)} />
           </div>
           <section className={styles.detailCard}>
+            <h4 className={styles.detailCardTitle}>Agent 计划</h4>
+            {result?.agent_plan.length ? (
+              <ol className={styles.stepsList}>
+                {result.agent_plan.map((item, index) => (
+                  <li className={styles.stepItem} key={`${item}-${index}`}>
+                    <span className={styles.stepDot} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (<p className={styles.emptyState}>本次还没有生成 Agent 计划。</p>)}
+          </section>
+          <section className={styles.detailCard}>
+            <h4 className={styles.detailCardTitle}>工具调用</h4>
+            {result?.tool_calls.length ? (
+              <div className={styles.stepsList}>
+                {result.tool_calls.map((toolCall, index) => (
+                  <article className={styles.toolCallCard} key={`${toolCall.name}-${index}`}>
+                    <div className={styles.toolCallHeader}>
+                      <code>{toolCall.name}</code>
+                      <span>{toolCall.status || "success"}</span>
+                    </div>
+                    <p className={styles.toolCallPayload}>
+                      {formatToolPayload(toolCall.output || toolCall.input)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (<p className={styles.emptyState}>本次还没有工具调用记录。</p>)}
+          </section>
+          <section className={styles.detailCard}>
             <h4 className={styles.detailCardTitle}>执行步骤</h4>
             {result?.steps.length ? (
               <ol className={styles.stepsList}>
@@ -707,6 +773,17 @@ function formatTaskIntent(intent?: string | null) {
       tool: "工具",
     }[intent || ""] || intent || "-"
   );
+}
+
+function formatToolPayload(payload?: Record<string, unknown>) {
+  if (!payload || Object.keys(payload).length === 0) {
+    return "-";
+  }
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return String(payload);
+  }
 }
 
 function ScoreItem({ label, value }: { label: string; value?: number | null }) {

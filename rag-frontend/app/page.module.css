@@ -1016,6 +1016,31 @@
   flex: 0 0 auto;
 }
 
+.toolCallCard {
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--panel-alt);
+}
+
+.toolCallHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.toolCallPayload {
+  margin: 8px 0 0;
+  color: var(--helper);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .sourceCard {
   padding: 12px;
   border: 1px solid var(--card-border);

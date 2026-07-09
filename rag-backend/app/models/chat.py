@@ -60,6 +60,8 @@ class ChatMessage(Base):
     route: Mapped[str | None] = mapped_column(String(50), nullable=True)
     task_intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
     task_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    agent_plan: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     retrieval_quality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     rewritten_question: Mapped[str | None] = mapped_column(Text, nullable=True)
     standalone_question: Mapped[str | None] = mapped_column(Text, nullable=True)

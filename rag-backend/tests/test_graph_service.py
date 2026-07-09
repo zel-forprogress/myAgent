@@ -13,6 +13,7 @@ from app.services.graph_service import (
     max_source_score,
     normalize_task_intent,
     normalize_route,
+    plan_for_intent,
     route_from_task_intent,
     serialize_value_for_span,
     shorten_text,
@@ -171,6 +172,19 @@ class TestTaskIntentRouting:
         assert normalize_task_intent("direct", "你好") == "chat"
         assert normalize_task_intent("rag", "什么是RAG") == "knowledge_qa"
         assert normalize_task_intent("knowledge-qa", "什么是RAG") == "knowledge_qa"
+
+
+class TestAgentPlan:
+    def test_agent_plan_for_knowledge_qa(self):
+        plan = plan_for_intent("knowledge_qa")
+
+        assert "检索知识库" in plan
+        assert "基于资料生成回答" in plan
+
+    def test_agent_plan_for_extract(self):
+        plan = plan_for_intent("extract")
+
+        assert any("抽取" in item for item in plan)
 
 
 class TestNormalizeRoute:

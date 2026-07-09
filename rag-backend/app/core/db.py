@@ -136,6 +136,20 @@ def _run_schema_migrations() -> None:
                 column_name="task_confidence",
                 column_sql="task_confidence FLOAT",
             )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_messages",
+                column_name="agent_plan",
+                column_sql="agent_plan JSON",
+            )
+            _ensure_column(
+                connection,
+                inspector,
+                table_name="chat_messages",
+                column_name="tool_calls",
+                column_sql="tool_calls JSON",
+            )
         if "ingestion_tasks" in table_names:
             _ensure_column(
                 connection,

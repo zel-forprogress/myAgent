@@ -54,6 +54,8 @@ def serialize_message(message: ChatMessage) -> MessageResponse:
         route=message.route or "",
         task_intent=message.task_intent or "",
         task_confidence=message.task_confidence or 0.0,
+        agent_plan=list(message.agent_plan or []),
+        tool_calls=list(message.tool_calls or []),
         retrieval_quality=message.retrieval_quality or "",
         rewritten_question=message.rewritten_question or "",
         standalone_question=message.standalone_question or "",

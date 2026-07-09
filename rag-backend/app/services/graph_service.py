@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, TypedDict
+﻿from typing import Any, Callable, List, TypedDict
 
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END, START, StateGraph
@@ -32,6 +32,8 @@ class ChatState(TypedDict):
     route: str
     task_intent: str
     task_confidence: float
+    agent_plan: List[str]
+    tool_calls: List[dict[str, Any]]
     retrieval_quality: str
     sources: List[SourceChunk]
     answer: str
@@ -69,6 +71,25 @@ TASK_INTENTS = {
 
 def append_step(state: ChatState, step: str) -> List[str]:
     return [*state.get("steps", []), step]
+
+
+def append_tool_call(
+    state: ChatState,
+    *,
+    name: str,
+    status: str = "success",
+    input_data: dict[str, Any] | None = None,
+    output_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        *state.get("tool_calls", []),
+        {
+            "name": name,
+            "status": status,
+            "input": input_data or {},
+            "output": output_data or {},
+        },
+    ]
 
 
 def max_source_score(sources: List[SourceChunk]) -> float:
@@ -110,6 +131,8 @@ def state_snapshot_for_span(state: ChatState) -> dict[str, Any]:
         "route": state.get("route", ""),
         "task_intent": state.get("task_intent", ""),
         "task_confidence": state.get("task_confidence", 0.0),
+        "agent_plan": state.get("agent_plan", []),
+        "tool_call_count": len(state.get("tool_calls", [])),
         "retrieval_quality": state.get("retrieval_quality", ""),
         "source_count": len(sources),
         "max_source_score": max_source_score(sources),
@@ -346,17 +369,77 @@ def route_question(state: ChatState) -> str:
     return state["route"]
 
 
+def plan_for_intent(task_intent: str) -> list[str]:
+    if task_intent == "chat":
+        return ["直接理解用户输入", "给出简洁回复"]
+    if task_intent == "summarize":
+        return ["扩大召回相关片段", "筛选高相关来源", "按主题归纳总结"]
+    if task_intent == "compare":
+        return ["召回候选材料", "识别对比对象", "按差异维度组织答案"]
+    if task_intent == "extract":
+        return ["召回包含结构化信息的片段", "抽取字段与清单", "保持来源可追溯"]
+    if task_intent == "write":
+        return ["召回事实依据", "整理写作要点", "生成可交付文本"]
+    if task_intent == "tool":
+        return ["识别需要调用的工具", "执行工具并检查结果", "汇总工具输出"]
+    return ["理解问题", "检索知识库", "检查检索质量", "基于资料生成回答"]
+
+
+def plan_agent_task(state: ChatState) -> dict:
+    task_intent = state.get("task_intent", "knowledge_qa")
+    plan = plan_for_intent(task_intent)
+    return {
+        "agent_plan": plan,
+        "tool_calls": append_tool_call(
+            state,
+            name="agent_planner",
+            input_data={
+                "task_intent": task_intent,
+                "route": state.get("route", ""),
+                "question": state.get("standalone_question") or state["question"],
+            },
+            output_data={"plan": plan},
+        ),
+        "steps": append_step(state, "plan_agent_task"),
+    }
+
+
 def retrieve(state: ChatState) -> dict:
     sources = retrieve_with_optional_rerank(state, retrieval_question(state))
-    return {"sources": sources, "steps": append_step(state, "retrieve")}
+    return {
+        "sources": sources,
+        "tool_calls": append_tool_call(
+            state,
+            name="knowledge_retrieval",
+            input_data={
+                "question": retrieval_question(state),
+                "top_k": state["top_k"],
+                "collections": state["collection_names"],
+            },
+            output_data={
+                "source_count": len(sources),
+                "max_score": max_source_score(sources),
+                "rerank_applied": any(source.rerank_score is not None for source in sources),
+            },
+        ),
+        "steps": append_step(state, "retrieve"),
+    }
 
 
 def check_retrieval_quality(state: ChatState) -> dict:
     retrieval_quality = "good"
-    if max_source_score(state.get("sources", [])) < get_retrieval_min_score():
+    max_score = max_source_score(state.get("sources", []))
+    min_score = get_retrieval_min_score()
+    if max_score < min_score:
         retrieval_quality = "poor"
     return {
         "retrieval_quality": retrieval_quality,
+        "tool_calls": append_tool_call(
+            state,
+            name="retrieval_quality_check",
+            input_data={"max_score": max_score, "min_required_score": min_score},
+            output_data={"retrieval_quality": retrieval_quality},
+        ),
         "steps": append_step(state, "check_retrieval_quality"),
     }
 
@@ -405,6 +488,12 @@ def rewrite_question(state: ChatState) -> dict:
 
     return {
         "rewritten_question": rewritten_question,
+        "tool_calls": append_tool_call(
+            state,
+            name="query_rewriter",
+            input_data={"question": base_question},
+            output_data={"rewritten_question": rewritten_question},
+        ),
         "steps": append_step(state, "rewrite_question"),
     }
 
@@ -412,15 +501,41 @@ def rewrite_question(state: ChatState) -> dict:
 def retrieve_rewritten(state: ChatState) -> dict:
     query = state.get("rewritten_question") or state["question"]
     sources = retrieve_with_optional_rerank(state, query)
-    return {"sources": sources, "steps": append_step(state, "retrieve_rewritten")}
+    return {
+        "sources": sources,
+        "tool_calls": append_tool_call(
+            state,
+            name="knowledge_retrieval",
+            input_data={
+                "question": query,
+                "top_k": state["top_k"],
+                "collections": state["collection_names"],
+                "rewritten": True,
+            },
+            output_data={
+                "source_count": len(sources),
+                "max_score": max_source_score(sources),
+                "rerank_applied": any(source.rerank_score is not None for source in sources),
+            },
+        ),
+        "steps": append_step(state, "retrieve_rewritten"),
+    }
 
 
 def check_rewritten_quality(state: ChatState) -> dict:
     retrieval_quality = "rewritten_good"
-    if max_source_score(state.get("sources", [])) < get_retrieval_min_score():
+    max_score = max_source_score(state.get("sources", []))
+    min_score = get_retrieval_min_score()
+    if max_score < min_score:
         retrieval_quality = "rewritten_poor"
     return {
         "retrieval_quality": retrieval_quality,
+        "tool_calls": append_tool_call(
+            state,
+            name="retrieval_quality_check",
+            input_data={"max_score": max_score, "min_required_score": min_score, "rewritten": True},
+            output_data={"retrieval_quality": retrieval_quality},
+        ),
         "steps": append_step(state, "check_rewritten_quality"),
     }
 
@@ -436,12 +551,31 @@ def generate_rag_answer(state: ChatState) -> dict:
         chat_history=state.get("chat_history", ""),
         standalone_question=state.get("standalone_question", ""),
     )
-    return {"answer": answer, "steps": append_step(state, "generate_rag_answer")}
+    return {
+        "answer": answer,
+        "tool_calls": append_tool_call(
+            state,
+            name="answer_generator",
+            input_data={
+                "source_count": len(state.get("sources", [])),
+                "retrieval_quality": state.get("retrieval_quality", ""),
+            },
+            output_data={"answer_length": len(answer)},
+        ),
+        "steps": append_step(state, "generate_rag_answer"),
+    }
 
 
 def generate_no_context_answer(state: ChatState) -> dict:
+    answer = "资料里没有找到足够相关的内容，暂时无法基于知识库回答这个问题。"
     return {
-        "answer": "资料里没有找到足够相关的内容，暂时无法基于知识库回答这个问题。",
+        "answer": answer,
+        "tool_calls": append_tool_call(
+            state,
+            name="no_context_guard",
+            input_data={"retrieval_quality": state.get("retrieval_quality", "")},
+            output_data={"guarded": True, "answer_length": len(answer)},
+        ),
         "steps": append_step(state, "generate_no_context_answer"),
     }
 
@@ -480,6 +614,12 @@ def generate_direct_answer(state: ChatState) -> dict:
         "answer": response.content,
         "sources": [],
         "retrieval_quality": "not_applicable",
+        "tool_calls": append_tool_call(
+            state,
+            name="direct_answer_generator",
+            input_data={"question": state["question"]},
+            output_data={"answer_length": len(str(response.content))},
+        ),
         "steps": append_step(state, "generate_direct_answer"),
     }
 
@@ -538,7 +678,19 @@ def stream_rag_answer(
         answer = "".join(answer_parts)
         update_generation(generation, output=answer)
 
-    return {"answer": answer, "steps": append_step(state, "generate_rag_answer")}
+    return {
+        "answer": answer,
+        "tool_calls": append_tool_call(
+            state,
+            name="answer_generator",
+            input_data={
+                "source_count": len(state.get("sources", [])),
+                "retrieval_quality": state.get("retrieval_quality", ""),
+            },
+            output_data={"answer_length": len(answer)},
+        ),
+        "steps": append_step(state, "generate_rag_answer"),
+    }
 
 
 def stream_direct_answer(
@@ -583,6 +735,12 @@ def stream_direct_answer(
         "answer": answer,
         "sources": [],
         "retrieval_quality": "not_applicable",
+        "tool_calls": append_tool_call(
+            state,
+            name="direct_answer_generator",
+            input_data={"question": state["question"]},
+            output_data={"answer_length": len(answer)},
+        ),
         "steps": append_step(state, "generate_direct_answer"),
     }
 
@@ -593,7 +751,19 @@ def chat_with_graph_stream(
     top_k: int,
     chat_history: str,
     on_event: Callable[[dict[str, Any]], None],
-) -> tuple[str, List[SourceChunk], str, List[str], str, str, str, str, float]:
+) -> tuple[
+    str,
+    List[SourceChunk],
+    str,
+    List[str],
+    str,
+    str,
+    str,
+    str,
+    float,
+    List[str],
+    list[dict[str, Any]],
+]:
     state: ChatState = {
         "question": question,
         "chat_history": chat_history,
@@ -604,6 +774,8 @@ def chat_with_graph_stream(
         "route": "",
         "task_intent": "",
         "task_confidence": 0.0,
+        "agent_plan": [],
+        "tool_calls": [],
         "retrieval_quality": "",
         "sources": [],
         "answer": "",
@@ -625,6 +797,8 @@ def chat_with_graph_stream(
                     "task_intent": state.get("task_intent", ""),
                     "task_confidence": state.get("task_confidence", 0.0),
                     "retrieval_quality": state.get("retrieval_quality", ""),
+                    "agent_plan": state.get("agent_plan", []),
+                    "tool_calls": state.get("tool_calls", []),
                 },
             }
         )
@@ -658,9 +832,20 @@ def chat_with_graph_stream(
                     },
                 }
             )
+        if name == "plan_agent_task":
+            on_event(
+                {
+                    "type": "meta",
+                    "data": {
+                        "agent_plan": state.get("agent_plan", []),
+                        "tool_calls": state.get("tool_calls", []),
+                    },
+                }
+            )
 
     run_regular_node("complete_question_with_history", complete_question_with_history)
     run_regular_node("analyze_question", analyze_question)
+    run_regular_node("plan_agent_task", plan_agent_task)
 
     if state["route"] == "direct":
         on_event({"type": "step", "data": {"step": "generate_direct_answer", "status": "start"}})
@@ -716,6 +901,8 @@ def chat_with_graph_stream(
         state.get("standalone_question", ""),
         state.get("task_intent", ""),
         state.get("task_confidence", 0.0),
+        state.get("agent_plan", []),
+        state.get("tool_calls", []),
     )
 
 
@@ -726,6 +913,7 @@ def build_chat_graph():
         traced_node("complete_question_with_history", complete_question_with_history),
     )
     graph.add_node("analyze_question", traced_node("analyze_question", analyze_question))
+    graph.add_node("plan_agent_task", traced_node("plan_agent_task", plan_agent_task))
     graph.add_node("retrieve", traced_node("retrieve", retrieve))
     graph.add_node(
         "check_retrieval_quality",
@@ -749,8 +937,9 @@ def build_chat_graph():
 
     graph.add_edge(START, "complete_question_with_history")
     graph.add_edge("complete_question_with_history", "analyze_question")
+    graph.add_edge("analyze_question", "plan_agent_task")
     graph.add_conditional_edges(
-        "analyze_question",
+        "plan_agent_task",
         route_question,
         {"rag": "retrieve", "direct": "generate_direct_answer"},
     )
@@ -781,7 +970,19 @@ def chat_with_graph(
     question: str,
     top_k: int = 4,
     chat_history: str = "",
-) -> tuple[str, List[SourceChunk], str, List[str], str, str, str, str, float]:
+) -> tuple[
+    str,
+    List[SourceChunk],
+    str,
+    List[str],
+    str,
+    str,
+    str,
+    str,
+    float,
+    List[str],
+    list[dict[str, Any]],
+]:
     result = chat_graph.invoke(
         {
             "question": question,
@@ -793,6 +994,8 @@ def chat_with_graph(
             "route": "",
             "task_intent": "",
             "task_confidence": 0.0,
+            "agent_plan": [],
+            "tool_calls": [],
             "retrieval_quality": "",
             "sources": [],
             "answer": "",
@@ -809,4 +1012,6 @@ def chat_with_graph(
         result.get("standalone_question", ""),
         result.get("task_intent", ""),
         result.get("task_confidence", 0.0),
+        result.get("agent_plan", []),
+        result.get("tool_calls", []),
     )
