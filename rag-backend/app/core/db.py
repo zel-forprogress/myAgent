@@ -179,7 +179,7 @@ def _bootstrap_metadata() -> None:
 
 
 def init_db(retries: int = 10, delay_seconds: int = 3) -> None:
-    from app.models import app_setting, chat, document, knowledge_base, user
+    from app.models import app_setting, chat, document, evaluation, knowledge_base, user
 
     last_error: Exception | None = None
 

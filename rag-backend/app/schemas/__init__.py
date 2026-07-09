@@ -27,6 +27,14 @@ from app.schemas.document import (
     IngestionTaskLogResponse,
     IngestionTaskResponse,
 )
+from app.schemas.evaluation import (
+    EvaluationCaseCreateRequest,
+    EvaluationCaseResponse,
+    EvaluationCaseResult,
+    EvaluationRunRequest,
+    EvaluationRunResponse,
+    EvaluationRunSummary,
+)
 from app.schemas.knowledge_base import (
     DeleteKnowledgeBaseResponse,
     KnowledgeBaseCreateRequest,
@@ -58,6 +66,12 @@ __all__ = [
     "IngestionTaskListResponse",
     "IngestionTaskLogResponse",
     "IngestionTaskResponse",
+    "EvaluationCaseCreateRequest",
+    "EvaluationCaseResponse",
+    "EvaluationCaseResult",
+    "EvaluationRunRequest",
+    "EvaluationRunResponse",
+    "EvaluationRunSummary",
     "KnowledgeBaseCreateRequest",
     "KnowledgeBaseRenameRequest",
     "KnowledgeBaseResponse",

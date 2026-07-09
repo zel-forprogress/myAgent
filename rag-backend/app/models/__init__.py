@@ -6,6 +6,7 @@ from app.models.document import (
     KnowledgeBaseDocument,
     KnowledgeBaseDocumentChunk,
 )
+from app.models.evaluation import EvaluationCase
 from app.models.knowledge_base import KnowledgeBase
 from app.models.user import User
 
@@ -15,6 +16,7 @@ __all__ = [
     "AppSetting",
     "IngestionTask",
     "IngestionTaskLog",
+    "EvaluationCase",
     "KnowledgeBase",
     "KnowledgeBaseDocument",
     "KnowledgeBaseDocumentChunk",

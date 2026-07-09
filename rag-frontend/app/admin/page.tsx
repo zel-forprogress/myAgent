@@ -16,6 +16,8 @@ import {
   DeleteSessionResponse,
   DocumentInfo,
   DocumentsResponse,
+  EvaluationCaseResponse,
+  EvaluationRunResponse,
   IngestResponse,
   IngestionTaskListResponse,
   IngestionTaskResponse,
@@ -60,6 +62,7 @@ type AdminView =
   | "overview"
   | "knowledge-bases"
   | "retrieval-test"
+  | "evaluations"
   | "sessions"
   | "users";
 
@@ -88,6 +91,12 @@ const adminMenus: MenuItem[] = [
     label: "检索测试",
     description: "调试问题召回片段和分数",
     icon: <MenuIcon variant="path" />,
+  },
+  {
+    key: "evaluations",
+    label: "评测中心",
+    description: "维护标准问题，批量诊断召回、阈值和 Rerank 效果",
+    icon: <MenuIcon variant="grid" />,
   },
   {
     key: "sessions",
@@ -154,6 +163,15 @@ export default function AdminPage() {
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [retrievalNotice, setRetrievalNotice] = useState<Notice | null>(null);
   const [retrievalResult, setRetrievalResult] = useState<RetrievalTestResponse | null>(null);
+  const [evaluationCases, setEvaluationCases] = useState<EvaluationCaseResponse[]>([]);
+  const [evaluationResult, setEvaluationResult] = useState<EvaluationRunResponse | null>(null);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [evaluationNotice, setEvaluationNotice] = useState<Notice | null>(null);
+  const [evaluationQuestion, setEvaluationQuestion] = useState("");
+  const [evaluationExpectedSources, setEvaluationExpectedSources] = useState("");
+  const [evaluationExpectedKeywords, setEvaluationExpectedKeywords] = useState("");
+  const [evaluationTopK, setEvaluationTopK] = useState(6);
+  const [evaluationUseRerank, setEvaluationUseRerank] = useState(true);
   const [rerankSettings, setRerankSettings] = useState<RerankSettingsResponse | null>(null);
   const [rerankSettingsNotice, setRerankSettingsNotice] = useState<Notice | null>(null);
   const [savingRerankSettings, setSavingRerankSettings] = useState(false);
@@ -418,7 +436,7 @@ export default function AdminPage() {
         await loadSessionMessages(sessionList[0].id);
       }
 
-      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList), fetchRerankSettings(), fetchRetrievalSettings()]);
+      await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBaseList), fetchRerankSettings(), fetchRetrievalSettings(), fetchEvaluationCases()]);
       try { await fetchUsers(userPage, USER_PAGE_SIZE); } catch { /* users tab will load on demand */ }
       try { await fetchStats(); } catch { /* stats fail silently */ }
       setAuthReady(true);
@@ -892,6 +910,142 @@ export default function AdminPage() {
       });
     } finally {
       setRetrievalLoading(false);
+    }
+  }
+
+  async function fetchEvaluationCases() {
+    const response = await authFetch(`${apiBaseUrl}/admin/evaluations/cases`);
+    const payload = (await response.json()) as EvaluationCaseResponse[] | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "获取评测用例失败。",
+      );
+    }
+    setEvaluationCases(payload as EvaluationCaseResponse[]);
+    return payload as EvaluationCaseResponse[];
+  }
+
+  function splitEvaluationTerms(value: string) {
+    return value
+      .split(/[,，\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  async function handleCreateEvaluationCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = evaluationQuestion.trim();
+    if (!retrievalKbId) {
+      setEvaluationNotice({ type: "error", text: "请先选择知识库。" });
+      return;
+    }
+    if (!question) {
+      setEvaluationNotice({ type: "error", text: "请输入评测问题。" });
+      return;
+    }
+
+    setEvaluationLoading(true);
+    setEvaluationNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/evaluations/cases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          knowledge_base_id: retrievalKbId,
+          question,
+          expected_sources: splitEvaluationTerms(evaluationExpectedSources),
+          expected_keywords: splitEvaluationTerms(evaluationExpectedKeywords),
+          top_k: evaluationTopK,
+          use_rerank: evaluationUseRerank,
+        }),
+      });
+      const payload = (await response.json()) as EvaluationCaseResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "创建评测用例失败。",
+        );
+      }
+      await fetchEvaluationCases();
+      setEvaluationQuestion("");
+      setEvaluationExpectedSources("");
+      setEvaluationExpectedKeywords("");
+      setEvaluationNotice({ type: "success", text: "评测用例已创建。" });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "创建评测用例失败。");
+        return;
+      }
+      setEvaluationNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "创建评测用例失败。",
+      });
+    } finally {
+      setEvaluationLoading(false);
+    }
+  }
+
+  async function handleRunEvaluations() {
+    if (!evaluationCases.length) {
+      setEvaluationNotice({ type: "error", text: "请先创建至少一个评测用例。" });
+      return;
+    }
+
+    setEvaluationLoading(true);
+    setEvaluationNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/evaluations/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = (await response.json()) as EvaluationRunResponse | { detail?: string };
+      if (!response.ok) {
+        throw new Error(
+          "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "运行评测失败。",
+        );
+      }
+      setEvaluationResult(payload as EvaluationRunResponse);
+      await fetchEvaluationCases();
+    } catch (error) {
+      if (error instanceof AuthError) {
+        handleAuthAwareError(error, "运行评测失败。");
+        return;
+      }
+      setEvaluationNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "运行评测失败。",
+      });
+    } finally {
+      setEvaluationLoading(false);
+    }
+  }
+
+  async function handleDeleteEvaluationCase(caseId: string) {
+    setEvaluationLoading(true);
+    setEvaluationNotice(null);
+    try {
+      const response = await authFetch(`${apiBaseUrl}/admin/evaluations/cases/${caseId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { detail?: string };
+        throw new Error(payload.detail || "删除评测用例失败。");
+      }
+      await fetchEvaluationCases();
+      setEvaluationResult(null);
+    } catch (error) {
+      setEvaluationNotice({
+        type: "error",
+        text: error instanceof Error ? error.message : "删除评测用例失败。",
+      });
+    } finally {
+      setEvaluationLoading(false);
     }
   }
 
@@ -1508,7 +1662,7 @@ export default function AdminPage() {
                 </button>
               ) : null}
               {activeView === "overview" ? (
-                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats(), fetchRerankSettings(), fetchRetrievalSettings()]); } finally { setStatsRefreshing(false); } }} type="button">
+                <button className={styles.refreshButton} disabled={statsRefreshing} onClick={async () => { setStatsRefreshing(true); try { await Promise.all([loadHealth(), loadDocumentCounts(knowledgeBases), reloadSessions(), fetchStats(), fetchRerankSettings(), fetchRetrievalSettings(), fetchEvaluationCases()]); } finally { setStatsRefreshing(false); } }} type="button">
                   {statsRefreshing ? "刷新中..." : "刷新统计"}
                 </button>
               ) : null}
@@ -1998,6 +2152,186 @@ export default function AdminPage() {
             </section>
             </>
             )
+          ) : null}
+
+          {activeView === "evaluations" ? (
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <h3 className={styles.cardTitle}>评测中心</h3>
+                  <p className={styles.cardSubtitle}>维护标准问题，批量检查召回命中、质量阈值和 Rerank 效果。</p>
+                </div>
+                <button
+                  className={styles.refreshButton}
+                  disabled={evaluationLoading}
+                  onClick={() => void handleRunEvaluations()}
+                  type="button"
+                >
+                  {evaluationLoading ? "运行中..." : "运行全部评测"}
+                </button>
+              </div>
+
+              <form className={styles.form} onSubmit={handleCreateEvaluationCase}>
+                <label className={styles.label} htmlFor="evaluation-kb">知识库</label>
+                <Select
+                  id="evaluation-kb"
+                  value={retrievalKbId}
+                  onChange={setRetrievalKbId}
+                  options={knowledgeBases.map((item) => ({
+                    value: item.id,
+                    label: `${item.name} (${item.document_count} 个文档)`,
+                  }))}
+                  placeholder="请选择知识库..."
+                />
+
+                <label className={styles.label} htmlFor="evaluation-question">标准问题</label>
+                <textarea
+                  id="evaluation-question"
+                  className={styles.input}
+                  value={evaluationQuestion}
+                  onChange={(event) => setEvaluationQuestion(event.target.value)}
+                  placeholder="例如：鸿蒙开发的要求是什么？"
+                  rows={3}
+                  style={{ resize: "vertical", minHeight: 84 }}
+                />
+
+                <label className={styles.label} htmlFor="evaluation-sources">期望来源</label>
+                <input
+                  id="evaluation-sources"
+                  className={styles.input}
+                  value={evaluationExpectedSources}
+                  onChange={(event) => setEvaluationExpectedSources(event.target.value)}
+                  placeholder="文件名或 source 片段，多个用逗号分隔"
+                />
+
+                <label className={styles.label} htmlFor="evaluation-keywords">期望关键词</label>
+                <input
+                  id="evaluation-keywords"
+                  className={styles.input}
+                  value={evaluationExpectedKeywords}
+                  onChange={(event) => setEvaluationExpectedKeywords(event.target.value)}
+                  placeholder="答案要点关键词，多个用逗号分隔"
+                />
+
+                <label className={styles.label} htmlFor="evaluation-top-k">召回片段数</label>
+                <input
+                  id="evaluation-top-k"
+                  className={styles.input}
+                  max={20}
+                  min={1}
+                  onChange={(event) => setEvaluationTopK(Number(event.target.value) || 6)}
+                  type="number"
+                  value={evaluationTopK}
+                />
+
+                <label className={styles.checkboxLabel}>
+                  <input
+                    checked={evaluationUseRerank}
+                    onChange={(event) => setEvaluationUseRerank(event.target.checked)}
+                    type="checkbox"
+                  />
+                  默认启用 Rerank
+                </label>
+
+                <div>
+                  <button className={styles.primaryButton} disabled={evaluationLoading} type="submit">
+                    {evaluationLoading ? "保存中..." : "新增评测用例"}
+                  </button>
+                </div>
+              </form>
+
+              {evaluationNotice ? <NoticeBox notice={evaluationNotice} /> : null}
+
+              {evaluationResult ? (
+                <section className={styles.summaryGrid} style={{ marginTop: 16 }}>
+                  <OverviewMetric icon="grid" label="通过率" value={`${Math.round(evaluationResult.summary.quality_pass_rate * 100)}%`} />
+                  <OverviewMetric icon="path" label="来源命中率" value={`${Math.round(evaluationResult.summary.source_hit_rate * 100)}%`} />
+                  <OverviewMetric icon="layers" label="平均最高分" value={formatScore(evaluationResult.summary.average_score)} />
+                  <OverviewMetric icon="chat" label="Rerank 生效率" value={`${Math.round(evaluationResult.summary.rerank_applied_rate * 100)}%`} />
+                </section>
+              ) : null}
+
+              <div className={styles.tableWrap} style={{ marginTop: 16 }}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>问题</th>
+                      <th>知识库</th>
+                      <th>TopK</th>
+                      <th>Rerank</th>
+                      <th>最近结果</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {evaluationCases.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.question}</td>
+                        <td>{item.knowledge_base_name || "-"}</td>
+                        <td>{item.top_k}</td>
+                        <td>{item.use_rerank ? "开启" : "关闭"}</td>
+                        <td>
+                          {item.last_status
+                            ? `${item.last_status === "passed" ? "通过" : "未通过"} / ${formatScore(item.last_score)}`
+                            : "未运行"}
+                        </td>
+                        <td>
+                          <button
+                            className={styles.deleteButton}
+                            disabled={evaluationLoading}
+                            onClick={() => void handleDeleteEvaluationCase(item.id)}
+                            type="button"
+                          >
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!evaluationCases.length ? (
+                      <tr>
+                        <td colSpan={6} className={styles.emptyTableCell}>
+                          暂无评测用例。先添加几条高频问题，再批量运行评测。
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+
+              {evaluationResult ? (
+                <section className={styles.statusList}>
+                  {evaluationResult.results.map((result) => (
+                    <article className={styles.messageCard} key={result.case.id}>
+                      <div className={styles.messageCardHeader}>
+                        <strong>{result.case.question}</strong>
+                        <span>{result.status === "passed" ? "通过" : "未通过"}</span>
+                      </div>
+                      <div className={styles.messageMeta}>
+                        <span>最高分: {formatScore(result.max_score)}</span>
+                        <span>阈值: {formatScore(result.min_required_score)}</span>
+                        <span>来源命中: {result.source_hit ? "是" : "否"}</span>
+                        <span>关键词覆盖: {Math.round(result.keyword_hit_rate * 100)}%</span>
+                        <span>Rerank: {result.rerank_applied ? "已应用" : "未应用"}</span>
+                        <span>耗时: {result.duration_ms}ms</span>
+                      </div>
+                      {result.matched_sources.length || result.matched_keywords.length ? (
+                        <p className={styles.helperText}>
+                          命中来源：{result.matched_sources.join("、") || "-"}；命中关键词：{result.matched_keywords.join("、") || "-"}
+                        </p>
+                      ) : null}
+                      {result.sources[0] ? (
+                        <p className={styles.messageContent} style={{ marginTop: 10 }}>
+                          Top1: {result.sources[0].content.slice(0, 260)}
+                        </p>
+                      ) : null}
+                      {result.rerank_error ? (
+                        <p className={styles.noticeError}>Rerank 错误：{result.rerank_error}</p>
+                      ) : null}
+                    </article>
+                  ))}
+                </section>
+              ) : null}
+            </section>
           ) : null}
 
           {activeView === "retrieval-test" ? (

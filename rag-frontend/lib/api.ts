@@ -80,6 +80,57 @@ export type RetrievalSettingsResponse = {
   source: string;
 };
 
+export type EvaluationCaseResponse = {
+  id: string;
+  knowledge_base_id: string;
+  knowledge_base_name: string;
+  question: string;
+  expected_sources: string[];
+  expected_keywords: string[];
+  top_k: number;
+  use_rerank: boolean;
+  note: string;
+  last_status?: string | null;
+  last_score?: number | null;
+  last_hit?: boolean | null;
+  last_ran_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EvaluationCaseResult = {
+  case: EvaluationCaseResponse;
+  status: string;
+  duration_ms: number;
+  source_count: number;
+  candidate_count: number;
+  max_score: number;
+  min_required_score: number;
+  quality_passed: boolean;
+  source_hit: boolean;
+  keyword_hit_rate: number;
+  matched_sources: string[];
+  matched_keywords: string[];
+  rerank_enabled: boolean;
+  rerank_applied: boolean;
+  rerank_error: string;
+  sources: SourceChunk[];
+};
+
+export type EvaluationRunResponse = {
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    source_hit_rate: number;
+    quality_pass_rate: number;
+    average_score: number;
+    average_keyword_hit_rate: number;
+    rerank_applied_rate: number;
+  };
+  results: EvaluationCaseResult[];
+};
+
 export type SessionResponse = {
   id: string;
   title: string;
