@@ -16,10 +16,11 @@ from app.services.rag_service import (
     build_context,
     generate_answer_with_context,
     get_llm,
-    retrieve_sources_multi,
 )
-from app.services.rerank_service import rerank_sources
-from app.services.settings_service import get_rerank_enabled, get_retrieval_min_score
+from app.services.agent_tools import (
+    agent_tool_registry,
+    max_source_score as tool_max_source_score,
+)
 
 
 class ChatState(TypedDict):
@@ -93,7 +94,7 @@ def append_tool_call(
 
 
 def max_source_score(sources: List[SourceChunk]) -> float:
-    return max((source.score or 0.0 for source in sources), default=0.0)
+    return tool_max_source_score(sources)
 
 
 def shorten_text(text: str, limit: int = 1000) -> str:
@@ -228,31 +229,13 @@ def retrieval_question(state: ChatState) -> str:
     return state.get("rewritten_question") or state.get("standalone_question") or state["question"]
 
 
-def retrieve_with_optional_rerank(state: ChatState, question: str) -> List[SourceChunk]:
-    top_k = state["top_k"]
-    candidate_top_k = top_k
-    rerank_enabled = get_rerank_enabled()
-    if rerank_enabled:
-        candidate_top_k = min(
-            max(top_k * max(1, settings.rerank_candidate_multiplier), top_k),
-            50,
-        )
-
-    sources = retrieve_sources_multi(
+def search_knowledge_sources(state: ChatState, question: str):
+    return agent_tool_registry.run(
+        "search_knowledge_base",
         collection_names=state["collection_names"],
         question=question,
-        top_k=candidate_top_k,
+        top_k=state["top_k"],
     )
-
-    if not rerank_enabled:
-        return sources[:top_k]
-
-    rerank_result = rerank_sources(
-        question=question,
-        sources=sources,
-        top_k=top_k,
-    )
-    return rerank_result.sources
 
 
 def complete_question_with_history(state: ChatState) -> dict:
@@ -405,41 +388,24 @@ def plan_agent_task(state: ChatState) -> dict:
 
 
 def retrieve(state: ChatState) -> dict:
-    sources = retrieve_with_optional_rerank(state, retrieval_question(state))
+    execution = search_knowledge_sources(state, retrieval_question(state))
+    sources = execution.artifacts.get("sources", [])
     return {
         "sources": sources,
-        "tool_calls": append_tool_call(
-            state,
-            name="knowledge_retrieval",
-            input_data={
-                "question": retrieval_question(state),
-                "top_k": state["top_k"],
-                "collections": state["collection_names"],
-            },
-            output_data={
-                "source_count": len(sources),
-                "max_score": max_source_score(sources),
-                "rerank_applied": any(source.rerank_score is not None for source in sources),
-            },
-        ),
+        "tool_calls": [*state.get("tool_calls", []), execution.to_tool_call()],
         "steps": append_step(state, "retrieve"),
     }
 
 
 def check_retrieval_quality(state: ChatState) -> dict:
-    retrieval_quality = "good"
-    max_score = max_source_score(state.get("sources", []))
-    min_score = get_retrieval_min_score()
-    if max_score < min_score:
-        retrieval_quality = "poor"
+    execution = agent_tool_registry.run(
+        "inspect_sources",
+        sources=state.get("sources", []),
+    )
+    retrieval_quality = execution.output.get("retrieval_quality", "poor")
     return {
         "retrieval_quality": retrieval_quality,
-        "tool_calls": append_tool_call(
-            state,
-            name="retrieval_quality_check",
-            input_data={"max_score": max_score, "min_required_score": min_score},
-            output_data={"retrieval_quality": retrieval_quality},
-        ),
+        "tool_calls": [*state.get("tool_calls", []), execution.to_tool_call()],
         "steps": append_step(state, "check_retrieval_quality"),
     }
 
@@ -500,42 +466,30 @@ def rewrite_question(state: ChatState) -> dict:
 
 def retrieve_rewritten(state: ChatState) -> dict:
     query = state.get("rewritten_question") or state["question"]
-    sources = retrieve_with_optional_rerank(state, query)
+    execution = search_knowledge_sources(state, query)
+    execution.input["rewritten"] = True
+    sources = execution.artifacts.get("sources", [])
     return {
         "sources": sources,
-        "tool_calls": append_tool_call(
-            state,
-            name="knowledge_retrieval",
-            input_data={
-                "question": query,
-                "top_k": state["top_k"],
-                "collections": state["collection_names"],
-                "rewritten": True,
-            },
-            output_data={
-                "source_count": len(sources),
-                "max_score": max_source_score(sources),
-                "rerank_applied": any(source.rerank_score is not None for source in sources),
-            },
-        ),
+        "tool_calls": [*state.get("tool_calls", []), execution.to_tool_call()],
         "steps": append_step(state, "retrieve_rewritten"),
     }
 
 
 def check_rewritten_quality(state: ChatState) -> dict:
-    retrieval_quality = "rewritten_good"
-    max_score = max_source_score(state.get("sources", []))
-    min_score = get_retrieval_min_score()
-    if max_score < min_score:
+    execution = agent_tool_registry.run(
+        "inspect_sources",
+        sources=state.get("sources", []),
+        rewritten=True,
+    )
+    retrieval_quality = execution.output.get("retrieval_quality", "poor")
+    if retrieval_quality == "good":
+        retrieval_quality = "rewritten_good"
+    else:
         retrieval_quality = "rewritten_poor"
     return {
         "retrieval_quality": retrieval_quality,
-        "tool_calls": append_tool_call(
-            state,
-            name="retrieval_quality_check",
-            input_data={"max_score": max_score, "min_required_score": min_score, "rewritten": True},
-            output_data={"retrieval_quality": retrieval_quality},
-        ),
+        "tool_calls": [*state.get("tool_calls", []), execution.to_tool_call()],
         "steps": append_step(state, "check_rewritten_quality"),
     }
 
@@ -568,14 +522,15 @@ def generate_rag_answer(state: ChatState) -> dict:
 
 def generate_no_context_answer(state: ChatState) -> dict:
     answer = "资料里没有找到足够相关的内容，暂时无法基于知识库回答这个问题。"
+    execution = agent_tool_registry.run(
+        "guard_no_context",
+        retrieval_quality=state.get("retrieval_quality", ""),
+        sources=state.get("sources", []),
+    )
+    execution.output["answer_length"] = len(answer)
     return {
         "answer": answer,
-        "tool_calls": append_tool_call(
-            state,
-            name="no_context_guard",
-            input_data={"retrieval_quality": state.get("retrieval_quality", "")},
-            output_data={"guarded": True, "answer_length": len(answer)},
-        ),
+        "tool_calls": [*state.get("tool_calls", []), execution.to_tool_call()],
         "steps": append_step(state, "generate_no_context_answer"),
     }
 

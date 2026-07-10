@@ -684,7 +684,7 @@ export default function HomePage() {
                 {result.tool_calls.map((toolCall, index) => (
                   <article className={styles.toolCallCard} key={`${toolCall.name}-${index}`}>
                     <div className={styles.toolCallHeader}>
-                      <code>{toolCall.name}</code>
+                      <code>{formatToolName(toolCall.name)}</code>
                       <span>{toolCall.status || "success"}</span>
                     </div>
                     <p className={styles.toolCallPayload}>
@@ -775,9 +775,40 @@ function formatTaskIntent(intent?: string | null) {
   );
 }
 
+const TOOL_NAME_MAP: Record<string, string> = {
+  agent_planner: "\u4efb\u52a1\u89c4\u5212",
+  search_knowledge_base: "\u77e5\u8bc6\u5e93\u68c0\u7d22",
+  inspect_sources: "\u6765\u6e90\u8bca\u65ad",
+  guard_no_context: "\u65e0\u8d44\u6599\u4fdd\u62a4",
+  query_rewriter: "\u95ee\u9898\u6539\u5199",
+  answer_generator: "\u7b54\u6848\u751f\u6210",
+  direct_answer_generator: "\u76f4\u63a5\u56de\u7b54",
+};
+
+function formatToolName(name: string) {
+  return TOOL_NAME_MAP[name] || name;
+}
+
 function formatToolPayload(payload?: Record<string, unknown>) {
   if (!payload || Object.keys(payload).length === 0) {
     return "-";
+  }
+  const compactKeys = [
+    "source_count",
+    "candidate_count",
+    "max_score",
+    "retrieval_quality",
+    "reason",
+    "recommendation",
+    "rerank_enabled",
+    "rerank_applied",
+    "answer_length",
+  ];
+  const compact = compactKeys
+    .filter((key) => payload[key] !== undefined)
+    .map((key) => `${key}: ${String(payload[key])}`);
+  if (compact.length > 0) {
+    return compact.join(" | ");
   }
   try {
     return JSON.stringify(payload, null, 2);
