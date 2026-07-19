@@ -161,6 +161,7 @@ export default function AdminPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadNotice, setUploadNotice] = useState<Notice | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
+  const [lastUploadTaskId, setLastUploadTaskId] = useState("");
   const [deleteNotice, setDeleteNotice] = useState<Notice | null>(null);
   const [deletingSource, setDeletingSource] = useState("");
   const [chunkingSource, setChunkingSource] = useState("");
@@ -359,6 +360,40 @@ export default function AdminPage() {
       window.clearInterval(timer);
     };
   }, [authReady, selectedKnowledgeBaseId, hasLiveIngestionWork, docPage, knowledgeBases]);
+
+  useEffect(() => {
+    if (!lastUploadTaskId) {
+      return;
+    }
+    const task = ingestionTasks.find((item) => item.id === lastUploadTaskId);
+    if (!task) {
+      return;
+    }
+    const filename = task.filename || "文档";
+    if (task.status === "success") {
+      setUploadNotice({
+        type: "success",
+        text: `${task.knowledge_base_name} 中的 ${filename} 已入库完成，生成 ${task.chunks || 0} 个片段。`,
+      });
+      setLastUploadTaskId("");
+      return;
+    }
+    if (task.status === "failed") {
+      setUploadNotice({
+        type: "error",
+        text: `${filename} 入库失败：${task.error || task.message || "请查看任务日志。"}`,
+      });
+      setLastUploadTaskId("");
+      return;
+    }
+    if (task.status === "cancelled") {
+      setUploadNotice({
+        type: "error",
+        text: `${filename} 入库任务已取消。`,
+      });
+      setLastUploadTaskId("");
+    }
+  }, [ingestionTasks, lastUploadTaskId]);
 
   useEffect(() => {
     const query = knowledgeBaseQuery.trim().toLocaleLowerCase();
@@ -851,6 +886,7 @@ export default function AdminPage() {
       }
 
       const successPayload = payload as IngestResponse;
+      setLastUploadTaskId(successPayload.task_id || "");
       setUploadNotice({
         type: "success",
         text: adminMessages.upload.successTemplate
