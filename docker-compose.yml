@@ -70,6 +70,15 @@ services:
       - etcd
       - minio
 
+  docling:
+    image: quay.io/docling-project/docling-serve:latest
+    container_name: rag-docling
+    ports:
+      - "5001:5001"
+    environment:
+      DOCLING_SERVE_ENABLE_UI: "1"
+      DOCLING_SERVE_MAX_SYNC_WAIT: "600"
+
   backend:
     build:
       context: ./rag-backend
@@ -111,6 +120,18 @@ services:
       RERANK_BASE_URL: ${RERANK_BASE_URL:-}
       RERANK_TIMEOUT_SECONDS: ${RERANK_TIMEOUT_SECONDS:-30}
       RERANK_CANDIDATE_MULTIPLIER: ${RERANK_CANDIDATE_MULTIPLIER:-4}
+      DOCUMENT_PARSER: ${DOCUMENT_PARSER:-docling}
+      AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+      AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
+      AZURE_DOCUMENT_INTELLIGENCE_MODEL: ${AZURE_DOCUMENT_INTELLIGENCE_MODEL:-prebuilt-layout}
+      AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS: ${AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS:-120}
+      DOCLING_BASE_URL: ${DOCLING_BASE_URL:-http://docling:5001}
+      DOCLING_API_KEY: ${DOCLING_API_KEY:-}
+      DOCLING_TIMEOUT_SECONDS: ${DOCLING_TIMEOUT_SECONDS:-600}
+      DOCLING_DO_OCR: ${DOCLING_DO_OCR:-true}
+      DOCLING_FORCE_OCR: ${DOCLING_FORCE_OCR:-false}
+      DOCLING_TABLE_MODE: ${DOCLING_TABLE_MODE:-accurate}
+      DOCLING_OCR_LANGS: ${DOCLING_OCR_LANGS:-en,ch_sim}
     ports:
       - "8000:8000"
     depends_on:
@@ -121,6 +142,8 @@ services:
       milvus:
         condition: service_started
       minio:
+        condition: service_started
+      docling:
         condition: service_started
 
   worker:
@@ -159,6 +182,18 @@ services:
       RERANK_BASE_URL: ${RERANK_BASE_URL:-}
       RERANK_TIMEOUT_SECONDS: ${RERANK_TIMEOUT_SECONDS:-30}
       RERANK_CANDIDATE_MULTIPLIER: ${RERANK_CANDIDATE_MULTIPLIER:-4}
+      DOCUMENT_PARSER: ${DOCUMENT_PARSER:-docling}
+      AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+      AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
+      AZURE_DOCUMENT_INTELLIGENCE_MODEL: ${AZURE_DOCUMENT_INTELLIGENCE_MODEL:-prebuilt-layout}
+      AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS: ${AZURE_DOCUMENT_INTELLIGENCE_TIMEOUT_SECONDS:-120}
+      DOCLING_BASE_URL: ${DOCLING_BASE_URL:-http://docling:5001}
+      DOCLING_API_KEY: ${DOCLING_API_KEY:-}
+      DOCLING_TIMEOUT_SECONDS: ${DOCLING_TIMEOUT_SECONDS:-600}
+      DOCLING_DO_OCR: ${DOCLING_DO_OCR:-true}
+      DOCLING_FORCE_OCR: ${DOCLING_FORCE_OCR:-false}
+      DOCLING_TABLE_MODE: ${DOCLING_TABLE_MODE:-accurate}
+      DOCLING_OCR_LANGS: ${DOCLING_OCR_LANGS:-en,ch_sim}
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +202,8 @@ services:
       milvus:
         condition: service_started
       minio:
+        condition: service_started
+      docling:
         condition: service_started
 
   frontend:

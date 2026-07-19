@@ -9,12 +9,16 @@ from app.services.rag_service import (
     build_context,
     escape_milvus_string,
     extract_text_from_bytes,
+    extract_text_from_bytes_basic,
+    extract_text_with_docling,
+    extract_text_with_azure_document_intelligence,
     extract_text_from_docx,
     extract_text_from_pdf,
     extract_text_from_txt_or_md,
     is_valid_collection_name,
     source_variants,
 )
+from app.core.config import settings
 
 
 class TestIsValidCollectionName:
@@ -105,3 +109,57 @@ class TestExtractTextFromBytes:
     def test_unsupported_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported"):
             extract_text_from_bytes(b"test", "image.png")
+
+    def test_basic_parser_still_rejects_cloud_only_type(self):
+        with pytest.raises(ValueError, match="Unsupported"):
+            extract_text_from_bytes_basic(b"test", "slides.pptx")
+
+    def test_azure_parser_branch_for_cloud_supported_type(self, monkeypatch):
+        monkeypatch.setattr(settings, "document_parser", "azure")
+        monkeypatch.setattr(
+            "app.services.rag_service.extract_text_with_azure_document_intelligence",
+            lambda content, source: f"parsed {source}",
+        )
+
+        assert extract_text_from_bytes(b"test", "scan.png") == "parsed scan.png"
+
+    def test_azure_parser_does_not_send_plain_text_to_cloud(self, monkeypatch):
+        monkeypatch.setattr(settings, "document_parser", "azure")
+
+        assert extract_text_from_bytes(b"Simple text", "doc.txt") == "Simple text"
+
+    def test_azure_parser_requires_credentials(self):
+        with pytest.raises(ValueError, match="endpoint/key"):
+            extract_text_with_azure_document_intelligence(b"test", "scan.png")
+
+    def test_docling_parser_branch_for_cloud_supported_type(self, monkeypatch):
+        monkeypatch.setattr(settings, "document_parser", "docling")
+        monkeypatch.setattr(
+            "app.services.rag_service.extract_text_with_docling",
+            lambda content, source: f"docling {source}",
+        )
+
+        assert extract_text_from_bytes(b"test", "scan.png") == "docling scan.png"
+
+    def test_docling_parser_does_not_send_plain_text_to_service(self, monkeypatch):
+        monkeypatch.setattr(settings, "document_parser", "docling")
+
+        assert extract_text_from_bytes(b"Simple text", "doc.txt") == "Simple text"
+
+    def test_docling_parser_reads_markdown_response(self, monkeypatch):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "status": "success",
+                    "document": {"md_content": "# Parsed\n\n| A | B |"},
+                }
+
+        def fake_post(*args, **kwargs):
+            return FakeResponse()
+
+        monkeypatch.setattr("httpx.post", fake_post)
+
+        assert extract_text_with_docling(b"test", "doc.pdf").startswith("# Parsed")

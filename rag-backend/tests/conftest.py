@@ -14,6 +14,7 @@ os.environ.setdefault("OBJECT_STORAGE_ENABLED", "false")
 os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "")
 os.environ.setdefault("LANGFUSE_SECRET_KEY", "")
 os.environ.setdefault("LANGFUSE_BASE_URL", "")
+os.environ.setdefault("DOCUMENT_PARSER", "basic")
 
 import pytest
 
@@ -26,3 +27,8 @@ def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "auth_secret_key", "test-secret-key-for-tests-only-32chars")
     monkeypatch.setattr(settings, "auth_access_token_expire_minutes", 60)
     monkeypatch.setattr(settings, "object_storage_enabled", False)
+    monkeypatch.setattr(settings, "document_parser", "basic")
+    monkeypatch.setattr(settings, "azure_document_intelligence_endpoint", None)
+    monkeypatch.setattr(settings, "azure_document_intelligence_key", None)
+    monkeypatch.setattr(settings, "docling_base_url", "http://127.0.0.1:5001")
+    monkeypatch.setattr(settings, "docling_api_key", None)

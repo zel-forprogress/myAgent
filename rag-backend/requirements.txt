@@ -8,6 +8,9 @@ PyJWT
 boto3
 celery[redis]
 redis
+httpx
+azure-ai-documentintelligence>=1.0.0
+azure-core>=1.30.0
 
 langchain
 langchain-openai

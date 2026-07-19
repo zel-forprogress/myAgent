@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     rerank_timeout_seconds: int = 30
     rerank_candidate_multiplier: int = 4
 
+    document_parser: str = "basic"
+    azure_document_intelligence_endpoint: Optional[str] = None
+    azure_document_intelligence_key: Optional[str] = None
+    azure_document_intelligence_model: str = "prebuilt-layout"
+    azure_document_intelligence_timeout_seconds: int = 120
+    docling_base_url: str = "http://127.0.0.1:5001"
+    docling_api_key: Optional[str] = None
+    docling_timeout_seconds: int = 600
+    docling_do_ocr: bool = True
+    docling_force_ocr: bool = False
+    docling_table_mode: str = "accurate"
+    docling_ocr_langs: str = "en,ch_sim"
+
     chat_history_recent_messages: int = 8
     chat_memory_summary_enabled: bool = True
     chat_memory_summary_start_messages: int = 16

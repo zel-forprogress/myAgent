@@ -13,7 +13,24 @@ from botocore.exceptions import ClientError
 
 from app.core.config import settings
 
-SUPPORTED_DOCUMENT_EXTENSIONS = {".txt", ".md", ".pdf", ".docx"}
+SUPPORTED_DOCUMENT_EXTENSIONS = {
+    ".txt",
+    ".md",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".xls",
+    ".pptx",
+    ".html",
+    ".htm",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".heif",
+}
 VALID_BUCKET_TOKEN_RE = re.compile(r"[^a-z0-9-]+")
 
 
@@ -121,7 +138,9 @@ def build_uploaded_local_relative_path(filename: str, knowledge_base_slug: str) 
 
     suffix = Path(safe_name).suffix.lower()
     if suffix not in SUPPORTED_DOCUMENT_EXTENSIONS:
-        raise ValueError("Only .txt, .md, .pdf, and .docx files are supported right now.")
+        raise ValueError(
+            "Only .txt, .md, .pdf, .docx, Office, HTML, and common image files are supported right now."
+        )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(safe_name).stem or "document"
@@ -138,7 +157,9 @@ def build_uploaded_object_key(filename: str, knowledge_base_slug: str) -> str:
 
     suffix = Path(safe_name).suffix.lower()
     if suffix not in SUPPORTED_DOCUMENT_EXTENSIONS:
-        raise ValueError("Only .txt, .md, .pdf, and .docx files are supported right now.")
+        raise ValueError(
+            "Only .txt, .md, .pdf, .docx, Office, HTML, and common image files are supported right now."
+        )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(safe_name).stem or "document"

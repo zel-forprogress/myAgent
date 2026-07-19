@@ -30,6 +30,7 @@ from app.services.storage_service import (
     StoredFileMetadata,
     detect_file_type,
     extract_filename,
+    guess_content_type,
     is_object_storage_source,
     normalize_source,
     read_file_bytes,
@@ -457,7 +458,124 @@ def extract_text_from_docx(content: bytes) -> str:
     return "\n\n".join(paragraphs)
 
 
-def extract_text_from_bytes(content: bytes, source: str) -> str:
+def is_azure_document_parser_enabled() -> bool:
+    return settings.document_parser.strip().lower() in {"azure", "azure_document_intelligence"}
+
+
+def is_docling_document_parser_enabled() -> bool:
+    return settings.document_parser.strip().lower() == "docling"
+
+
+def bool_form_value(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def docling_from_format(source: str) -> str:
+    suffix = Path(source).suffix.lower().lstrip(".")
+    if suffix in {"jpg", "jpeg", "png", "bmp", "tiff", "tif", "heif"}:
+        return "image"
+    if suffix == "htm":
+        return "html"
+    return suffix
+
+
+def extract_text_with_docling(content: bytes, source: str) -> str:
+    try:
+        import httpx
+    except ImportError as exc:
+        raise ValueError("Docling parser requires httpx.") from exc
+
+    filename = extract_filename(source) or "document"
+    url = f"{settings.docling_base_url.rstrip('/')}/v1/convert/file"
+    headers = {}
+    if settings.docling_api_key:
+        headers["X-Api-Key"] = settings.docling_api_key
+
+    ocr_langs = [
+        lang.strip()
+        for lang in settings.docling_ocr_langs.split(",")
+        if lang.strip()
+    ]
+    data: list[tuple[str, str]] = [
+        ("from_formats", docling_from_format(source)),
+        ("to_formats", "md"),
+        ("image_export_mode", "placeholder"),
+        ("do_ocr", bool_form_value(settings.docling_do_ocr)),
+        ("force_ocr", bool_form_value(settings.docling_force_ocr)),
+        ("table_mode", settings.docling_table_mode),
+        ("abort_on_error", "false"),
+        ("return_as_file", "false"),
+    ]
+    data.extend(("ocr_lang", lang) for lang in ocr_langs)
+
+    try:
+        response = httpx.post(
+            url,
+            headers=headers,
+            data=data,
+            files={
+                "files": (
+                    filename,
+                    content,
+                    guess_content_type(filename),
+                )
+            },
+            timeout=settings.docling_timeout_seconds,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise ValueError(f"Docling document parsing failed: {exc}") from exc
+
+    payload = response.json()
+    status = str(payload.get("status", "")).lower()
+    if status not in {"success", "partial_success"}:
+        errors = payload.get("errors") or []
+        raise ValueError(f"Docling document parsing failed with status {status}: {errors}")
+
+    document = payload.get("document") or {}
+    text = str(document.get("md_content") or document.get("text_content") or "").strip()
+    if not text:
+        raise ValueError("Docling returned empty document content.")
+    return text
+
+
+def extract_text_with_azure_document_intelligence(content: bytes, source: str) -> str:
+    if not settings.azure_document_intelligence_endpoint or not settings.azure_document_intelligence_key:
+        raise ValueError(
+            "Azure Document Intelligence parser is enabled, but endpoint/key are not configured."
+        )
+
+    try:
+        from azure.ai.documentintelligence import DocumentIntelligenceClient
+        from azure.ai.documentintelligence.models import (
+            AnalyzeDocumentRequest,
+            DocumentContentFormat,
+        )
+        from azure.core.credentials import AzureKeyCredential
+    except ImportError as exc:
+        raise ValueError(
+            "Azure Document Intelligence parser requires azure-ai-documentintelligence."
+        ) from exc
+
+    client = DocumentIntelligenceClient(
+        endpoint=settings.azure_document_intelligence_endpoint,
+        credential=AzureKeyCredential(settings.azure_document_intelligence_key),
+    )
+    poller = client.begin_analyze_document(
+        settings.azure_document_intelligence_model,
+        AnalyzeDocumentRequest(bytes_source=content),
+        output_content_format=DocumentContentFormat.MARKDOWN,
+        content_type=guess_content_type(source),
+        polling_interval=1,
+    )
+    result = poller.result(timeout=settings.azure_document_intelligence_timeout_seconds)
+    text = (getattr(result, "content", "") or "").strip()
+    if not text:
+        raise ValueError("Azure Document Intelligence returned empty document content.")
+    return text
+
+
+def extract_text_from_bytes_basic(content: bytes, source: str) -> str:
     suffix = Path(source).suffix.lower()
     if suffix in {".txt", ".md"}:
         return extract_text_from_txt_or_md(content)
@@ -466,6 +584,14 @@ def extract_text_from_bytes(content: bytes, source: str) -> str:
     if suffix == ".docx":
         return extract_text_from_docx(content)
     raise ValueError(f"Unsupported file type: {suffix}")
+
+
+def extract_text_from_bytes(content: bytes, source: str) -> str:
+    if is_docling_document_parser_enabled() and Path(source).suffix.lower() not in {".txt", ".md"}:
+        return extract_text_with_docling(content, source)
+    if is_azure_document_parser_enabled() and Path(source).suffix.lower() not in {".txt", ".md"}:
+        return extract_text_with_azure_document_intelligence(content, source)
+    return extract_text_from_bytes_basic(content, source)
 
 
 def extract_text_from_source(source: str) -> str:
