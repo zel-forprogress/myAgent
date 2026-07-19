@@ -224,7 +224,7 @@ export default function AdminPage() {
     knowledge_bases: number; users: number;
     documents: { total: number; chunks: number; size: number; indexed: number; pending: number; failed: number };
     milvus: { collections: number; vectors: number };
-    retrieval?: { chat_rag_total: number; recall_hits: number; recall_rate: number; no_context_count: number; average_score: number };
+    retrieval?: { chat_rag_total: number; recall_hits: number; recall_rate: number; no_context_count: number; average_score: number; min_score: number };
     kb_breakdown: { name: string; documents: number; chunks: number; size: number; collection: string }[];
   };
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);

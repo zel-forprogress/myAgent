@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db, require_admin
 from app.models import ChatMessage, KnowledgeBase, KnowledgeBaseDocument, User
 from app.services.rag_service import get_milvus_client
+from app.services.settings_service import get_retrieval_min_score
 
 router = APIRouter(prefix="/admin", tags=["admin-stats"])
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ def admin_stats(
         .filter(ChatMessage.role == "assistant", ChatMessage.route == "rag")
         .all()
     )
+    retrieval_min_score = get_retrieval_min_score(db)
     rag_total = len(rag_messages)
     hit_qualities = {"good", "rewritten_good"}
     retrieval_hits = sum(
@@ -48,13 +50,13 @@ def admin_stats(
     )
     source_scores = []
     for message in rag_messages:
-        scores = [
+        source_scores.extend(
             float(source.get("score"))
             for source in message.sources or []
-            if isinstance(source, dict) and isinstance(source.get("score"), (int, float))
-        ]
-        if scores:
-            source_scores.append(max(scores))
+            if isinstance(source, dict)
+            and isinstance(source.get("score"), (int, float))
+            and float(source.get("score")) >= retrieval_min_score
+        )
 
     recall_rate = retrieval_hits / rag_total if rag_total else 0.0
     average_score = sum(source_scores) / len(source_scores) if source_scores else 0.0
@@ -100,6 +102,7 @@ def admin_stats(
             "recall_rate": recall_rate,
             "no_context_count": no_context_count,
             "average_score": average_score,
+            "min_score": retrieval_min_score,
         },
         "kb_breakdown": kb_breakdown,
     }
