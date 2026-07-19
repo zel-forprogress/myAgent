@@ -496,17 +496,18 @@ def extract_text_with_docling(content: bytes, source: str) -> str:
         for lang in settings.docling_ocr_langs.split(",")
         if lang.strip()
     ]
-    data: list[tuple[str, str]] = [
-        ("from_formats", docling_from_format(source)),
-        ("to_formats", "md"),
-        ("image_export_mode", "placeholder"),
-        ("do_ocr", bool_form_value(settings.docling_do_ocr)),
-        ("force_ocr", bool_form_value(settings.docling_force_ocr)),
-        ("table_mode", settings.docling_table_mode),
-        ("abort_on_error", "false"),
-        ("return_as_file", "false"),
-    ]
-    data.extend(("ocr_lang", lang) for lang in ocr_langs)
+    data: dict[str, str] = {
+        "from_formats": docling_from_format(source),
+        "to_formats": "md",
+        "image_export_mode": "placeholder",
+        "do_ocr": bool_form_value(settings.docling_do_ocr),
+        "force_ocr": bool_form_value(settings.docling_force_ocr),
+        "table_mode": settings.docling_table_mode,
+        "abort_on_error": "false",
+        "return_as_file": "false",
+    }
+    if ocr_langs:
+        data["ocr_lang"] = ",".join(ocr_langs)
 
     try:
         response = httpx.post(

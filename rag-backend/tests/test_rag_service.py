@@ -158,6 +158,9 @@ class TestExtractTextFromBytes:
                 }
 
         def fake_post(*args, **kwargs):
+            assert isinstance(kwargs["data"], dict)
+            assert kwargs["data"]["from_formats"] == "pdf"
+            assert "files" in kwargs
             return FakeResponse()
 
         monkeypatch.setattr("httpx.post", fake_post)
