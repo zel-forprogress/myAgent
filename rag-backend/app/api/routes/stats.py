@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, require_admin
-from app.models import KnowledgeBase, KnowledgeBaseDocument, User
+from app.models import ChatMessage, KnowledgeBase, KnowledgeBaseDocument, User
 from app.services.rag_service import get_milvus_client
 
 router = APIRouter(prefix="/admin", tags=["admin-stats"])
@@ -26,6 +26,38 @@ def admin_stats(
     indexed_count = sum(1 for d in docs if d.status == "success")
     pending_count = sum(1 for d in docs if d.status == "pending")
     failed_count = sum(1 for d in docs if d.status == "failed")
+
+    rag_messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.role == "assistant", ChatMessage.route == "rag")
+        .all()
+    )
+    rag_total = len(rag_messages)
+    hit_qualities = {"good", "rewritten_good"}
+    retrieval_hits = sum(
+        1
+        for message in rag_messages
+        if (message.source_count or 0) > 0
+        and (message.retrieval_quality or "") in hit_qualities
+    )
+    no_context_count = sum(
+        1
+        for message in rag_messages
+        if (message.retrieval_quality or "") in {"poor", "rewritten_poor"}
+        or (message.source_count or 0) == 0
+    )
+    source_scores = []
+    for message in rag_messages:
+        scores = [
+            float(source.get("score"))
+            for source in message.sources or []
+            if isinstance(source, dict) and isinstance(source.get("score"), (int, float))
+        ]
+        if scores:
+            source_scores.append(max(scores))
+
+    recall_rate = retrieval_hits / rag_total if rag_total else 0.0
+    average_score = sum(source_scores) / len(source_scores) if source_scores else 0.0
 
     try:
         client = get_milvus_client()
@@ -62,5 +94,12 @@ def admin_stats(
             "indexed": indexed_count, "pending": pending_count, "failed": failed_count,
         },
         "milvus": {"collections": len(collections), "vectors": total_vectors},
+        "retrieval": {
+            "chat_rag_total": rag_total,
+            "recall_hits": retrieval_hits,
+            "recall_rate": recall_rate,
+            "no_context_count": no_context_count,
+            "average_score": average_score,
+        },
         "kb_breakdown": kb_breakdown,
     }

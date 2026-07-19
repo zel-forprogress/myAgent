@@ -224,6 +224,7 @@ export default function AdminPage() {
     knowledge_bases: number; users: number;
     documents: { total: number; chunks: number; size: number; indexed: number; pending: number; failed: number };
     milvus: { collections: number; vectors: number };
+    retrieval?: { chat_rag_total: number; recall_hits: number; recall_rate: number; no_context_count: number; average_score: number };
     kb_breakdown: { name: string; documents: number; chunks: number; size: number; collection: string }[];
   };
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
@@ -394,6 +395,16 @@ export default function AdminPage() {
       setLastUploadTaskId("");
     }
   }, [ingestionTasks, lastUploadTaskId]);
+
+  useEffect(() => {
+    if (!authReady || activeView !== "overview") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void fetchStats();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeView, authReady]);
 
   useEffect(() => {
     const query = knowledgeBaseQuery.trim().toLocaleLowerCase();
@@ -1736,6 +1747,33 @@ export default function AdminPage() {
                 <OverviewMetric icon="layers" label="Milvus 集合数" value={adminStats ? String(adminStats.milvus.collections) : "-"} />
               </section>
 
+              <section className={styles.summaryGrid} style={{ marginTop: 16 }}>
+                <OverviewMetric
+                  icon="path"
+                  label="总召回率"
+                  value={formatPercentOrDash(adminStats?.retrieval?.recall_rate, adminStats?.retrieval?.chat_rag_total)}
+                />
+                <OverviewMetric
+                  icon="doc"
+                  label="RAG 问答数"
+                  value={adminStats ? String(adminStats.retrieval?.chat_rag_total ?? 0) : "-"}
+                />
+                <OverviewMetric
+                  icon="grid"
+                  label="命中次数"
+                  value={adminStats ? String(adminStats.retrieval?.recall_hits ?? 0) : "-"}
+                />
+                <OverviewMetric
+                  icon="layers"
+                  label="平均召回分"
+                  value={
+                    adminStats?.retrieval?.chat_rag_total
+                      ? formatScore(adminStats.retrieval.average_score)
+                      : "-"
+                  }
+                />
+              </section>
+
               <section className={styles.card} style={{ marginTop: 18 }}>
                 <div className={styles.cardHeader}>
                   <div>
@@ -2897,6 +2935,13 @@ function formatScore(score?: number | null) {
     return "-";
   }
   return score.toFixed(3);
+}
+
+function formatPercentOrDash(value?: number | null, total?: number | null) {
+  if (!total || typeof value !== "number") {
+    return "-";
+  }
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatRetrievalType(type?: string | null) {
