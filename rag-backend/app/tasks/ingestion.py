@@ -10,6 +10,21 @@ from app.services.ingestion_pipeline import IngestionTaskCancelled, run_ingestio
 from app.services.ingestion_task_service import update_ingestion_task
 
 
+NON_RETRYABLE_ERROR_MARKERS = {
+    "AllocationQuota.FreeTierOnly",
+    "Free quota exhausted",
+    "insufficient_quota",
+    "invalid_api_key",
+}
+
+
+def is_non_retryable_error(exc: Exception) -> bool:
+    message = str(exc)
+    if exc.__class__.__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+        return True
+    return any(marker in message for marker in NON_RETRYABLE_ERROR_MARKERS)
+
+
 @celery_app.task(
     bind=True,
     name="app.tasks.ingestion.process_ingestion_task",
@@ -30,6 +45,17 @@ def process_ingestion_task(self: Task, task_id: str) -> str:
         except IngestionTaskCancelled:
             return f"ingestion task {task_id} cancelled"
         except Exception as exc:
+            if is_non_retryable_error(exc):
+                update_ingestion_task(
+                    db,
+                    task,
+                    status="failed",
+                    current_node=task.current_node or "failed",
+                    message=f"Ingestion task failed: {exc}",
+                    error=str(exc),
+                )
+                return f"ingestion task {task_id} failed: {exc}"
+
             current_retries = int(getattr(self.request, "retries", 0) or 0)
             max_retries = task.max_retries or settings.ingestion_task_max_retries
             if current_retries < max_retries:

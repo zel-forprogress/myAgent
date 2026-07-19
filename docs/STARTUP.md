@@ -93,7 +93,7 @@ OPENAI_API_KEY=your_dashscope_api_key
 ```env
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 CHAT_MODEL=qwen3.7-plus
-EMBEDDING_MODEL=text-embedding-v4
+EMBEDDING_MODEL=qwen3.7-text-embedding
 ```
 
 如果你使用其他 Qwen 聊天模型，只需要修改 `CHAT_MODEL`。

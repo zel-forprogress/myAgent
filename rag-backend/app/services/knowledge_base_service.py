@@ -95,7 +95,12 @@ def create_knowledge_base(
     return knowledge_base
 
 
-def rename_knowledge_base(db: Session, knowledge_base_id: str, name: str) -> KnowledgeBase:
+def rename_knowledge_base(
+    db: Session,
+    knowledge_base_id: str,
+    name: str,
+    embedding_model: str | None = None,
+) -> KnowledgeBase:
     knowledge_base = get_knowledge_base(db, knowledge_base_id)
     if knowledge_base is None:
         raise ValueError("Knowledge base not found.")
@@ -109,6 +114,8 @@ def rename_knowledge_base(db: Session, knowledge_base_id: str, name: str) -> Kno
         raise ValueError("Knowledge base name already exists.")
 
     knowledge_base.name = trimmed_name
+    if embedding_model is not None:
+        knowledge_base.embedding_model = embedding_model.strip()
     db.commit()
     db.refresh(knowledge_base)
     return knowledge_base

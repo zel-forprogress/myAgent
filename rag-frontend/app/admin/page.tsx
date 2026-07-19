@@ -60,6 +60,11 @@ const INGESTION_POLL_INTERVAL_MS = 3000;
 const SUPPORTED_UPLOAD_ACCEPT =
   ".txt,.md,.pdf,.docx,.xlsx,.xls,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif";
 const SUPPORTED_UPLOAD_LABEL = ".txt .md .pdf .docx .xlsx .xls .pptx .html .jpg .jpeg .png .bmp .tiff .heif";
+const EMBEDDING_MODEL_OPTIONS = [
+  { value: "qwen3.7-text-embedding", label: "qwen3.7-text-embedding (通义千问)" },
+  { value: "text-embedding-v4", label: "text-embedding-v4 (通义千问)" },
+  { value: "text-embedding-v3", label: "text-embedding-v3 (通义千问)" },
+];
 
 type AdminView =
   | "overview"
@@ -197,6 +202,7 @@ export default function AdminPage() {
   const [deletingKnowledgeBaseId, setDeletingKnowledgeBaseId] = useState("");
   const [editingKbId, setEditingKbId] = useState("");
   const [editKbName, setEditKbName] = useState("");
+  const [editKbEmbeddingModel, setEditKbEmbeddingModel] = useState("");
   const [renamingKb, setRenamingKb] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
@@ -734,8 +740,13 @@ export default function AdminPage() {
 
   async function handleRenameKnowledgeBase(knowledgeBaseId: string) {
     const trimmedName = editKbName.trim();
+    const trimmedEmbeddingModel = editKbEmbeddingModel.trim();
     if (!trimmedName) {
       setKnowledgeBaseNotice({ type: "error", text: adminMessages.knowledgeBases.nameRequired });
+      return;
+    }
+    if (!trimmedEmbeddingModel) {
+      setKnowledgeBaseNotice({ type: "error", text: adminMessages.forms.requiredFields });
       return;
     }
     setRenamingKb(true);
@@ -743,13 +754,14 @@ export default function AdminPage() {
       const response = await authFetch(`${apiBaseUrl}/knowledge-bases/${knowledgeBaseId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({ name: trimmedName, embedding_model: trimmedEmbeddingModel }),
       });
       const payload = (await response.json()) as KnowledgeBaseResponse | { detail?: string };
       if (!response.ok) throw new Error("detail" in payload && typeof payload.detail === "string" ? payload.detail : adminMessages.knowledgeBases.renameGenericFailed);
       setKnowledgeBases((prev) => prev.map((kb) => (kb.id === knowledgeBaseId ? (payload as KnowledgeBaseResponse) : kb)));
       setEditingKbId("");
       setEditKbName("");
+      setEditKbEmbeddingModel("");
       setKnowledgeBaseNotice({ type: "success", text: adminMessages.knowledgeBases.renameSuccess });
     } catch (error) {
       if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.knowledgeBases.renameGenericFailed); return; }
@@ -2089,7 +2101,7 @@ export default function AdminPage() {
                               className={styles.input}
                               value={editKbName}
                               onChange={(e) => setEditKbName(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === "Enter") void handleRenameKnowledgeBase(item.id); if (e.key === "Escape") { setEditingKbId(""); setEditKbName(""); } }}
+                              onKeyDown={(e) => { if (e.key === "Enter") void handleRenameKnowledgeBase(item.id); if (e.key === "Escape") { setEditingKbId(""); setEditKbName(""); setEditKbEmbeddingModel(""); } }}
                               autoFocus
                             />
                           ) : (
@@ -2108,7 +2120,18 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td>{item.collection_name}</td>
-                        <td>{item.embedding_model || "-"}</td>
+                        <td>
+                          {editingKbId === item.id ? (
+                            <Select
+                              value={editKbEmbeddingModel}
+                              onChange={setEditKbEmbeddingModel}
+                              options={EMBEDDING_MODEL_OPTIONS}
+                              placeholder="请选择 Embedding 模型..."
+                            />
+                          ) : (
+                            item.embedding_model || "-"
+                          )}
+                        </td>
                         <td>{item.document_count}</td>
                         <td>{new Date(item.created_at).toLocaleString("zh-CN")}</td>
                         <td>
@@ -2117,11 +2140,11 @@ export default function AdminPage() {
                               <button className={styles.primaryButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} disabled={renamingKb} onClick={() => void handleRenameKnowledgeBase(item.id)} type="button">
                                 {renamingKb ? "保存中..." : "保存"}
                               </button>
-                              <button className={styles.refreshButton} style={{ minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(""); setEditKbName(""); }} type="button">取消</button>
+                              <button className={styles.refreshButton} style={{ minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(""); setEditKbName(""); setEditKbEmbeddingModel(""); }} type="button">取消</button>
                             </>
                           ) : (
                             <>
-                              <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(item.id); setEditKbName(item.name); }} type="button">编辑</button>
+                              <button className={styles.refreshButton} style={{ marginRight: 6, minHeight: 32, padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditingKbId(item.id); setEditKbName(item.name); setEditKbEmbeddingModel(item.embedding_model || "qwen3.7-text-embedding"); }} type="button">编辑</button>
                               <button className={styles.deleteButton} disabled={deletingKnowledgeBaseId === item.id} onClick={() => void handleDeleteKnowledgeBase(item)} type="button">
                                 {deletingKnowledgeBaseId === item.id ? "删除中..." : "删除"}
                               </button>
@@ -2686,8 +2709,7 @@ export default function AdminPage() {
                 value={newEmbeddingModel}
                 onChange={setNewEmbeddingModel}
                 options={[
-                  { value: "text-embedding-v4", label: "text-embedding-v4 (通义千问)" },
-                  { value: "text-embedding-v3", label: "text-embedding-v3 (通义千问)" },
+                  ...EMBEDDING_MODEL_OPTIONS,
                 ]}
                 placeholder="请选择 Embedding 模型..."
               />

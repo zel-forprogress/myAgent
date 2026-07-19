@@ -92,7 +92,12 @@ def rename_knowledge_base_route(
 ) -> KnowledgeBaseResponse:
     try:
         _ = current_user
-        knowledge_base = rename_knowledge_base(db, knowledge_base_id, request.name)
+        knowledge_base = rename_knowledge_base(
+            db,
+            knowledge_base_id,
+            request.name,
+            embedding_model=request.embedding_model,
+        )
         return serialize_knowledge_base(knowledge_base)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

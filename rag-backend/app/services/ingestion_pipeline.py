@@ -9,7 +9,6 @@ from app.services.knowledge_base_service import resolve_knowledge_base
 from app.services.rag_service import (
     detect_file_type,
     extract_filename,
-    get_document_character_count,
     ingest_document,
 )
 from app.services.storage_service import get_stored_file_metadata
@@ -55,7 +54,6 @@ def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
         details.update({"chunks": chunks, "skipped": skipped})
 
     chunk_status = "success" if chunks > 0 or skipped > 0 else "failed"
-    character_count, _ = get_document_character_count(source)
     with task_node(db, task, "update_document_record", "Updating document record"):
         upsert_document_record(
             db,

@@ -36,6 +36,7 @@ class KnowledgeBaseResponse(BaseModel):
 
 class KnowledgeBaseRenameRequest(BaseModel):
     name: str = Field(..., min_length=1, description="New knowledge base name")
+    embedding_model: Optional[str] = Field(None, min_length=1, description="Embedding model name")
 
 
 class DeleteKnowledgeBaseResponse(BaseModel):
