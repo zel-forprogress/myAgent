@@ -33,8 +33,8 @@ def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
 
     ensure_task_active(db, task)
     with task_node(db, task, "inspect_document", "Inspecting document text") as details:
-        character_count, _ = get_document_character_count(source)
         storage_metadata = get_stored_file_metadata(source)
+        character_count = 0
         details.update(
             {
                 "character_count": character_count,
@@ -55,6 +55,7 @@ def run_ingestion_pipeline(db: Session, task: IngestionTask) -> IngestionTask:
         details.update({"chunks": chunks, "skipped": skipped})
 
     chunk_status = "success" if chunks > 0 or skipped > 0 else "failed"
+    character_count, _ = get_document_character_count(source)
     with task_node(db, task, "update_document_record", "Updating document record"):
         upsert_document_record(
             db,

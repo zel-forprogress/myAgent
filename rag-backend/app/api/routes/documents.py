@@ -22,7 +22,6 @@ from app.services.document_service import (
     count_document_records,
     delete_document_record,
     list_document_infos,
-    sync_document_records,
     update_document_record_status,
     upsert_document_record,
 )
@@ -309,7 +308,6 @@ def documents(
     try:
         _ = current_user
         knowledge_base = resolve_knowledge_base(db, knowledge_base_id)
-        sync_document_records(db, knowledge_base)
         total = count_document_records(db, knowledge_base.id)
         offset = (max(page, 1) - 1) * max(page_size, 1)
         return DocumentsResponse(
