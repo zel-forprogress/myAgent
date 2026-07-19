@@ -57,6 +57,9 @@ type DocumentSearchResult = {
 const LIVE_INGESTION_STATUSES = new Set(["pending", "queued", "running", "retrying"]);
 const KNOWLEDGE_BASE_PAGE_SIZE = 6;
 const INGESTION_POLL_INTERVAL_MS = 3000;
+const SUPPORTED_UPLOAD_ACCEPT =
+  ".txt,.md,.pdf,.docx,.xlsx,.xls,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif";
+const SUPPORTED_UPLOAD_LABEL = ".txt .md .pdf .docx .xlsx .xls .pptx .html .jpg .jpeg .png .bmp .tiff .heif";
 
 type AdminView =
   | "overview"
@@ -1796,7 +1799,7 @@ export default function AdminPage() {
                 <Modal
                   open={uploadModalOpen}
                   title="上传文档"
-                  subtitle="选择文件上传到当前知识库，支持 .txt .md .pdf .docx"
+                  subtitle={`选择文件上传到当前知识库，支持 ${SUPPORTED_UPLOAD_LABEL}`}
                   onClose={() => { if (!uploadLoading) { setUploadModalOpen(false); setSelectedFile(null); } }}
                   actions={
                     <>
@@ -1808,7 +1811,7 @@ export default function AdminPage() {
                   }
                 >
                   <label className={styles.fileDropZone} htmlFor="upload-file-input">
-                    <input id="upload-file-input" type="file" accept=".txt,.md,.pdf,.docx" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
+                    <input id="upload-file-input" type="file" accept={SUPPORTED_UPLOAD_ACCEPT} onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
                     {selectedFile ? (
                       <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
                     ) : (
