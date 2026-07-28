@@ -15,6 +15,11 @@ from app.schemas import (
     IngestResponse,
     IngestionTaskListResponse,
     IngestionTaskResponse,
+    MultipartAbortResponse,
+    MultipartCompleteRequest,
+    MultipartInitResponse,
+    MultipartListResponse,
+    MultipartPartResponse,
     RetrievalTestRequest,
     RetrievalTestResponse,
 )
@@ -46,10 +51,18 @@ from app.services.rag_service import (
 )
 from app.services.rerank_service import get_rerank_endpoint, rerank_sources
 from app.services.storage_service import (
+    MultipartUploadContext,
+    abort_multipart_upload,
+    build_object_source,
+    build_stored_file_from_multipart,
+    complete_multipart_upload,
     delete_stored_file,
     get_stored_file_metadata,
+    init_multipart_upload,
     is_managed_upload_source,
+    list_uploaded_parts,
     save_uploaded_file,
+    upload_part,
 )
 
 router = APIRouter()
@@ -566,4 +579,235 @@ def delete_documents(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Delete document failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Multipart upload endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/ingest/upload/multipart/init", response_model=MultipartInitResponse)
+def multipart_init(
+    knowledge_base_id: str | None = Form(default=None),
+    filename: str = Form(...),
+    file_size: int = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> MultipartInitResponse:
+    try:
+        _ = current_user
+        if not filename:
+            raise HTTPException(status_code=400, detail="Filename is required")
+        if file_size <= 0:
+            raise HTTPException(status_code=400, detail="File size must be positive")
+        if file_size > settings.max_upload_size:
+            max_mb = settings.max_upload_size / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum allowed size is {max_mb:.0f} MB.",
+            )
+
+        knowledge_base = resolve_knowledge_base(db, knowledge_base_id)
+        ctx = init_multipart_upload(filename, knowledge_base.slug)
+        task = create_ingestion_task(
+            db,
+            knowledge_base=knowledge_base,
+            task_type="upload",
+            filename=filename,
+            source=build_object_source(ctx.bucket, ctx.object_key),
+            message="Multipart upload initialized",
+        )
+        return MultipartInitResponse(
+            upload_id=ctx.upload_id,
+            bucket=ctx.bucket,
+            object_key=ctx.object_key,
+            task_id=task.id,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multipart init failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post(
+    "/ingest/upload/multipart/{upload_id}/part",
+    response_model=MultipartPartResponse,
+)
+async def multipart_upload_part(
+    upload_id: str,
+    part_number: int = Form(...),
+    bucket: str = Form(...),
+    object_key: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> MultipartPartResponse:
+    try:
+        _ = current_user
+        if part_number < 1:
+            raise HTTPException(status_code=400, detail="Part number must be >= 1")
+        content = await file.read()
+        ctx = MultipartUploadContext(
+            upload_id=upload_id,
+            bucket=bucket,
+            object_key=object_key,
+        )
+        result = upload_part(ctx, part_number, content)
+        return MultipartPartResponse(
+            part_number=result["PartNumber"],
+            etag=result["ETag"],
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multipart upload part failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/ingest/upload/multipart/{upload_id}/complete", response_model=IngestResponse)
+def multipart_complete(
+    upload_id: str,
+    request: MultipartCompleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> IngestResponse:
+    try:
+        _ = current_user
+        if not request.parts:
+            raise HTTPException(status_code=400, detail="At least one part is required")
+
+        knowledge_base = resolve_knowledge_base(db, request.knowledge_base_id)
+        task = get_ingestion_task(db, upload_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Upload task not found")
+
+        ctx = MultipartUploadContext(
+            upload_id=upload_id,
+            bucket=request.bucket,
+            object_key=request.object_key,
+        )
+
+        complete_multipart_upload(
+            ctx,
+            [{"PartNumber": p.part_number, "ETag": p.etag} for p in request.parts],
+        )
+
+        stored_file = build_stored_file_from_multipart(ctx)
+
+        with task_node(db, task, "record_document", "Creating pending document record"):
+            upsert_document_record(
+                db,
+                knowledge_base=knowledge_base,
+                filename=extract_filename(stored_file.source),
+                file_type=detect_file_type(stored_file.source),
+                source=normalize_source(stored_file.source),
+                storage_provider=stored_file.provider,
+                storage_bucket=stored_file.bucket,
+                storage_object_key=stored_file.object_key,
+                content_type=stored_file.content_type,
+                file_size=stored_file.file_size,
+                chunks=0,
+                status="pending",
+                character_count=0,
+                uploaded_at=stored_file.uploaded_at,
+            )
+        update_ingestion_task(
+            db,
+            task,
+            status="pending",
+            current_node="record_document",
+            message="Document uploaded via multipart, waiting for indexing",
+            filename=extract_filename(stored_file.source),
+            source=normalize_source(stored_file.source),
+        )
+        task = enqueue_ingestion_task(db, task)
+        message = task.message or "Document queued for indexing"
+        return IngestResponse(
+            success=True,
+            message=message,
+            chunks=0,
+            skipped=0,
+            knowledge_base_id=knowledge_base.id,
+            knowledge_base_name=knowledge_base.name,
+            collection=knowledge_base.collection_name,
+            stored_path=stored_file.source,
+            filename=extract_filename(stored_file.source),
+            file_type=detect_file_type(stored_file.source),
+            status=task.status,
+            character_count=0,
+            uploaded_at=stored_file.uploaded_at,
+            storage_provider=stored_file.provider,
+            storage_bucket=stored_file.bucket,
+            storage_object_key=stored_file.object_key,
+            content_type=stored_file.content_type,
+            file_size=stored_file.file_size,
+            task_id=task.id,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multipart complete failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get(
+    "/ingest/upload/multipart/{upload_id}/parts",
+    response_model=MultipartListResponse,
+)
+def multipart_list_parts(
+    upload_id: str,
+    bucket: str = "",
+    object_key: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> MultipartListResponse:
+    try:
+        _ = current_user
+        ctx = MultipartUploadContext(upload_id=upload_id, bucket=bucket, object_key=object_key)
+        parts = list_uploaded_parts(ctx)
+        return MultipartListResponse(parts=parts)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multipart list parts failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/ingest/upload/multipart/{upload_id}",
+    response_model=MultipartAbortResponse,
+)
+def multipart_abort(
+    upload_id: str,
+    bucket: str = "",
+    object_key: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> MultipartAbortResponse:
+    try:
+        _ = current_user
+        ctx = MultipartUploadContext(upload_id=upload_id, bucket=bucket, object_key=object_key)
+        abort_multipart_upload(ctx)
+        task = get_ingestion_task(db, upload_id)
+        if task is not None:
+            update_ingestion_task(
+                db,
+                task,
+                status="cancelled",
+                current_node="abort",
+                message="Multipart upload aborted",
+            )
+        return MultipartAbortResponse(success=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Multipart abort failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

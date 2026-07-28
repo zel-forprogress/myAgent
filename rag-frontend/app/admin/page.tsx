@@ -23,12 +23,15 @@ import {
   IngestionTaskResponse,
   KnowledgeBaseResponse,
   MessageResponse,
+  MultipartInitResponse,
+  MultipartPartResponse,
   RerankSettingsResponse,
   RetrievalSettingsResponse,
   RetrievalTestResponse,
   SessionListResponse,
   SessionMessagesResponse,
   SessionResponse,
+  UploadProgressState,
   UserResponse,
 } from "../../lib/api";
 import {
@@ -60,6 +63,11 @@ const INGESTION_POLL_INTERVAL_MS = 3000;
 const SUPPORTED_UPLOAD_ACCEPT =
   ".txt,.md,.pdf,.docx,.xlsx,.xls,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif";
 const SUPPORTED_UPLOAD_LABEL = ".txt .md .pdf .docx .xlsx .xls .pptx .html .jpg .jpeg .png .bmp .tiff .heif";
+const MULTIPART_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per chunk
+const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB — use multipart above this
+const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+const MULTIPART_UPLOAD_STATE_KEY = "myagent_multipart_upload";
+const MAX_PART_RETRIES = 3;
 const EMBEDDING_MODEL_OPTIONS = [
   { value: "qwen3.7-text-embedding", label: "qwen3.7-text-embedding (通义千问)" },
   { value: "text-embedding-v4", label: "text-embedding-v4 (通义千问)" },
@@ -206,6 +214,8 @@ export default function AdminPage() {
   const [editKbEmbeddingModel, setEditKbEmbeddingModel] = useState("");
   const [renamingKb, setRenamingKb] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
+  const [uploadPaused, setUploadPaused] = useState(false);
 
   // --- User management ---
   type UserListItem = { id: string; username: string; role: string; created_at: string };
@@ -859,6 +869,192 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Multipart upload helpers
+  // ---------------------------------------------------------------------------
+
+  function saveMultipartState(state: UploadProgressState): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MULTIPART_UPLOAD_STATE_KEY, JSON.stringify(state));
+  }
+
+  function clearMultipartState(): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(MULTIPART_UPLOAD_STATE_KEY);
+  }
+
+  function getMultipartState(): UploadProgressState | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(MULTIPART_UPLOAD_STATE_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as UploadProgressState;
+    } catch {
+      return null;
+    }
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  async function initMultipartUpload(
+    file: File,
+    knowledgeBaseId: string,
+  ): Promise<MultipartInitResponse> {
+    const formData = new FormData();
+    formData.append("knowledge_base_id", knowledgeBaseId);
+    formData.append("filename", file.name);
+    formData.append("file_size", String(file.size));
+
+    const response = await authFetch(`${apiBaseUrl}/ingest/upload/multipart/init`, {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json()) as MultipartInitResponse | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "初始化分片上传失败。",
+      );
+    }
+    return payload as MultipartInitResponse;
+  }
+
+  async function uploadSinglePart(
+    uploadId: string,
+    bucket: string,
+    objectKey: string,
+    partNumber: number,
+    chunk: Blob,
+  ): Promise<MultipartPartResponse> {
+    const formData = new FormData();
+    formData.append("part_number", String(partNumber));
+    formData.append("bucket", bucket);
+    formData.append("object_key", objectKey);
+    formData.append("file", chunk, `part_${partNumber}`);
+
+    const response = await authFetch(
+      `${apiBaseUrl}/ingest/upload/multipart/${uploadId}/part`,
+      { method: "POST", body: formData },
+    );
+    const payload = (await response.json()) as MultipartPartResponse | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : `分片 ${partNumber} 上传失败。`,
+      );
+    }
+    return payload as MultipartPartResponse;
+  }
+
+  async function completeMultipartUpload(
+    uploadId: string,
+    knowledgeBaseId: string,
+    bucket: string,
+    objectKey: string,
+    parts: Array<{ part_number: number; etag: string }>,
+  ): Promise<IngestResponse> {
+    const response = await authFetch(
+      `${apiBaseUrl}/ingest/upload/multipart/${uploadId}/complete`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parts, knowledge_base_id: knowledgeBaseId, bucket, object_key: objectKey }),
+      },
+    );
+    const payload = (await response.json()) as IngestResponse | { detail?: string };
+    if (!response.ok) {
+      throw new Error(
+        "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : "完成分片上传失败。",
+      );
+    }
+    return payload as IngestResponse;
+  }
+
+  async function performMultipartUpload(file: File, knowledgeBaseId: string): Promise<IngestResponse> {
+    const init = await initMultipartUpload(file, knowledgeBaseId);
+    const totalParts = Math.ceil(file.size / MULTIPART_CHUNK_SIZE);
+    const uploadedParts: number[] = [];
+    const parts: Array<{ part_number: number; etag: string }> = [];
+
+    setUploadProgress({
+      status: "uploading",
+      uploadId: init.upload_id,
+      bucket: init.bucket,
+      objectKey: init.object_key,
+      filename: file.name,
+      fileSize: file.size,
+      totalParts,
+      uploadedParts: [],
+      progress: 0,
+    });
+
+    for (let i = 0; i < totalParts; i++) {
+      if (uploadPaused) {
+        setUploadProgress(prev => prev ? { ...prev, status: "paused" } : null);
+        return Promise.reject(new Error("上传已暂停"));
+      }
+
+      const partNumber = i + 1;
+      const start = i * MULTIPART_CHUNK_SIZE;
+      const end = Math.min(start + MULTIPART_CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+
+      let lastError: Error | null = null;
+      for (let retry = 0; retry < MAX_PART_RETRIES; retry++) {
+        try {
+          const result = await uploadSinglePart(
+            init.upload_id, init.bucket, init.object_key, partNumber, chunk,
+          );
+          uploadedParts.push(partNumber);
+          parts.push({ part_number: result.part_number, etag: result.etag });
+          const progress = Math.round((uploadedParts.length / totalParts) * 100);
+          setUploadProgress(prev => prev ? {
+            ...prev,
+            uploadedParts: [...uploadedParts],
+            progress,
+          } : null);
+          saveMultipartState({
+            status: "uploading",
+            uploadId: init.upload_id,
+            bucket: init.bucket,
+            objectKey: init.object_key,
+            filename: file.name,
+            fileSize: file.size,
+            totalParts,
+            uploadedParts: [...uploadedParts],
+            progress,
+          });
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (retry < MAX_PART_RETRIES - 1) {
+            await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+          }
+        }
+      }
+
+      if (lastError && uploadedParts.length < partNumber) {
+        setUploadProgress(prev => prev ? { ...prev, status: "error", error: lastError!.message } : null);
+        throw lastError;
+      }
+    }
+
+    const result = await completeMultipartUpload(
+      init.upload_id, knowledgeBaseId, init.bucket, init.object_key, parts,
+    );
+    clearMultipartState();
+    setUploadProgress(prev => prev ? { ...prev, status: "completed", progress: 100 } : null);
+    return result;
+  }
+
   async function handleUpload() {
     if (!selectedKnowledgeBase) {
       setUploadNotice({ type: "error", text: adminMessages.upload.selectKbFirst });
@@ -871,42 +1067,52 @@ export default function AdminPage() {
       });
       return;
     }
+    if (selectedFile.size > MAX_UPLOAD_SIZE) {
+      setUploadNotice({
+        type: "error",
+        text: `文件过大，最大支持 ${formatFileSize(MAX_UPLOAD_SIZE)}。`,
+      });
+      return;
+    }
 
     setUploadLoading(true);
     setUploadNotice(null);
+    setUploadPaused(false);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("knowledge_base_id", selectedKnowledgeBase.id);
-
-      const response = await authFetch(`${apiBaseUrl}/ingest/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const payload = (await response.json()) as
-        | IngestResponse
-        | { detail?: string };
-      if (!response.ok) {
-        throw new Error(
-          "detail" in payload && typeof payload.detail === "string"
-            ? payload.detail
-            : adminMessages.upload.uploadFailed,
-        );
+      let result: IngestResponse;
+      if (selectedFile.size >= MULTIPART_THRESHOLD) {
+        result = await performMultipartUpload(selectedFile, selectedKnowledgeBase.id);
+      } else {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("knowledge_base_id", selectedKnowledgeBase.id);
+        const response = await authFetch(`${apiBaseUrl}/ingest/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        const payload = (await response.json()) as IngestResponse | { detail?: string };
+        if (!response.ok) {
+          throw new Error(
+            "detail" in payload && typeof payload.detail === "string"
+              ? payload.detail
+              : adminMessages.upload.uploadFailed,
+          );
+        }
+        result = payload as IngestResponse;
       }
 
-      const successPayload = payload as IngestResponse;
-      setLastUploadTaskId(successPayload.task_id || "");
+      setLastUploadTaskId(result.task_id || "");
       setUploadNotice({
         type: "success",
         text: adminMessages.upload.successTemplate
-          .replace("{kb_name}", successPayload.knowledge_base_name)
-          .replace("{filename}", successPayload.filename)
-          .replace("{file_type}", successPayload.file_type),
+          .replace("{kb_name}", result.knowledge_base_name)
+          .replace("{filename}", result.filename)
+          .replace("{file_type}", result.file_type),
       });
       setSelectedFile(null);
       setUploadModalOpen(false);
+      setUploadProgress(null);
       void Promise.all([
         loadDocuments(selectedKnowledgeBase.id),
         loadIngestionTasks(selectedKnowledgeBase.id),
@@ -924,6 +1130,14 @@ export default function AdminPage() {
     } finally {
       setUploadLoading(false);
     }
+  }
+
+  function handlePauseUpload() {
+    setUploadPaused(true);
+  }
+
+  function handleResumeUpload() {
+    setUploadPaused(false);
   }
 
   async function handleRetrievalTest(event: FormEvent<HTMLFormElement>) {
@@ -1885,25 +2099,48 @@ export default function AdminPage() {
                 <Modal
                   open={uploadModalOpen}
                   title="上传文档"
-                  subtitle={`选择文件上传到当前知识库，支持 ${SUPPORTED_UPLOAD_LABEL}`}
-                  onClose={() => { if (!uploadLoading) { setUploadModalOpen(false); setSelectedFile(null); } }}
+                  subtitle={`选择文件上传到当前知识库，支持 ${SUPPORTED_UPLOAD_LABEL}，最大 ${formatFileSize(MAX_UPLOAD_SIZE)}`}
+                  onClose={() => { if (!uploadLoading) { setUploadModalOpen(false); setSelectedFile(null); setUploadProgress(null); } }}
                   actions={
                     <>
-                      <button className={styles.backButton} disabled={uploadLoading} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); }} type="button">取消</button>
-                      <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload(); }} type="button">
-                        {uploadLoading ? "上传中..." : "上传"}
-                      </button>
+                      <button className={styles.backButton} disabled={uploadLoading} onClick={() => { setUploadModalOpen(false); setSelectedFile(null); setUploadProgress(null); }} type="button">取消</button>
+                      {uploadProgress?.status === "uploading" ? (
+                        <button className={styles.primaryButton} onClick={() => handlePauseUpload()} type="button">
+                          暂停
+                        </button>
+                      ) : uploadProgress?.status === "paused" ? (
+                        <button className={styles.primaryButton} onClick={() => handleResumeUpload()} type="button">
+                          继续
+                        </button>
+                      ) : (
+                        <button className={styles.primaryButton} disabled={uploadLoading || !selectedFile} onClick={() => { void handleUpload(); }} type="button">
+                          {uploadLoading ? "上传中..." : "上传"}
+                        </button>
+                      )}
                     </>
                   }
                 >
                   <label className={styles.fileDropZone} htmlFor="upload-file-input">
                     <input id="upload-file-input" type="file" accept={SUPPORTED_UPLOAD_ACCEPT} onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} style={{ display: "none" }} />
                     {selectedFile ? (
-                      <span>{selectedFile.name}（{(selectedFile.size / 1024).toFixed(1)} KB）</span>
+                      <span>{selectedFile.name} ({formatFileSize(selectedFile.size)})</span>
                     ) : (
                       <span>点击选择文件，或将文件拖拽到此处</span>
                     )}
                   </label>
+                  {uploadProgress ? (
+                    <div className={styles.uploadProgress}>
+                      <div className={styles.uploadProgressBar}>
+                        <div className={styles.uploadProgressFill} style={{ width: `${uploadProgress.progress}%` }} />
+                      </div>
+                      <div className={styles.uploadProgressText}>
+                        {uploadProgress.status === "uploading" && `上传中... ${uploadProgress.progress}% (${uploadProgress.uploadedParts.length}/${uploadProgress.totalParts} 分片)`}
+                        {uploadProgress.status === "paused" && `已暂停 (${uploadProgress.progress}%)`}
+                        {uploadProgress.status === "completed" && "上传完成，正在处理..."}
+                        {uploadProgress.status === "error" && `上传失败：${uploadProgress.error || "网络错误"}`}
+                      </div>
+                    </div>
+                  ) : null}
                 </Modal>
 
                 <div className={styles.tableWrap}>

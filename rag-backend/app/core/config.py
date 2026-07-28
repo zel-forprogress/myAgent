@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     ingestion_task_max_retries: int = 3
     ingestion_task_retry_delay_seconds: int = 30
 
+    max_upload_size: int = 2 * 1024 * 1024 * 1024  # 2GB，可通过 .env 覆盖
+    multipart_chunk_size: int = 5 * 1024 * 1024     # 5MB 每片，S3 最小要求
+    multipart_threshold_mb: int = 100                # 超过此大小自动使用分片上传
+
     rerank_enabled: bool = False
     rerank_model: str = "qwen3-rerank"
     rerank_base_url: Optional[str] = None

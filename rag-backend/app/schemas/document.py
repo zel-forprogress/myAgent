@@ -109,3 +109,46 @@ class IngestionTaskResponse(BaseModel):
 class IngestionTaskListResponse(BaseModel):
     tasks: list[IngestionTaskResponse]
     total: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Multipart upload schemas
+# ---------------------------------------------------------------------------
+
+
+class MultipartInitResponse(BaseModel):
+    upload_id: str
+    bucket: str
+    object_key: str
+    task_id: str
+
+
+class MultipartPartETag(BaseModel):
+    part_number: int
+    etag: str
+
+
+class MultipartPartResponse(BaseModel):
+    part_number: int
+    etag: str
+
+
+class MultipartCompleteRequest(BaseModel):
+    parts: list[MultipartPartETag]
+    knowledge_base_id: str
+    bucket: str
+    object_key: str
+
+
+class MultipartPartInfo(BaseModel):
+    part_number: int
+    etag: str
+    size: int
+
+
+class MultipartListResponse(BaseModel):
+    parts: list[MultipartPartInfo]
+
+
+class MultipartAbortResponse(BaseModel):
+    success: bool

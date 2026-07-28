@@ -301,3 +301,47 @@ export type DeleteDocumentResponse = {
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
   "http://127.0.0.1:8000";
+
+// ---------------------------------------------------------------------------
+// Multipart upload types
+// ---------------------------------------------------------------------------
+
+export type MultipartInitResponse = {
+  upload_id: string;
+  bucket: string;
+  object_key: string;
+  task_id: string;
+};
+
+export type MultipartPartResponse = {
+  part_number: number;
+  etag: string;
+};
+
+export type MultipartCompleteRequest = {
+  parts: Array<{ part_number: number; etag: string }>;
+  knowledge_base_id: string;
+  bucket: string;
+  object_key: string;
+};
+
+export type MultipartListResponse = {
+  parts: Array<{ part_number: number; etag: string; size: number }>;
+};
+
+export type MultipartAbortResponse = {
+  success: boolean;
+};
+
+export type UploadProgressState = {
+  status: "idle" | "uploading" | "paused" | "error" | "completed";
+  uploadId: string;
+  bucket: string;
+  objectKey: string;
+  filename: string;
+  fileSize: number;
+  totalParts: number;
+  uploadedParts: number[];
+  progress: number;
+  error?: string;
+};

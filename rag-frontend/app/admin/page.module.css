@@ -615,6 +615,30 @@
   background: #f8f7ff;
 }
 
+.uploadProgress {
+  margin: 12px 0;
+}
+
+.uploadProgressBar {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.uploadProgressFill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.uploadProgressText {
+  font-size: 12px;
+  color: var(--helper);
+  margin-top: 6px;
+  text-align: center;
+}
+
 .fileInput {
   border-style: dashed;
   background: #fafbfe;

@@ -289,3 +289,114 @@ def delete_bucket_if_empty(bucket_name: str) -> None:
 def is_managed_upload_source(source: str) -> bool:
     normalized = normalize_source(source)
     return normalized.startswith("data/docs/uploads/")
+
+
+# ---------------------------------------------------------------------------
+# S3 Multipart Upload helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MultipartUploadContext:
+    """Holds the state of an in-progress multipart upload."""
+
+    upload_id: str
+    bucket: str
+    object_key: str
+
+
+def init_multipart_upload(
+    filename: str,
+    knowledge_base_slug: str,
+) -> MultipartUploadContext:
+    """Create a new multipart upload and return its context."""
+    bucket = build_knowledge_base_bucket_name(knowledge_base_slug)
+    object_key = build_uploaded_object_key(filename, knowledge_base_slug)
+    ensure_bucket_exists(bucket)
+    client = get_s3_client()
+    response = client.create_multipart_upload(Bucket=bucket, Key=object_key)
+    return MultipartUploadContext(
+        upload_id=response["UploadId"],
+        bucket=bucket,
+        object_key=object_key,
+    )
+
+
+def upload_part(
+    ctx: MultipartUploadContext,
+    part_number: int,
+    data: bytes,
+) -> dict:
+    """Upload a single part and return ``{PartNumber, ETag}``."""
+    client = get_s3_client()
+    response = client.upload_part(
+        Bucket=ctx.bucket,
+        Key=ctx.object_key,
+        UploadId=ctx.upload_id,
+        PartNumber=part_number,
+        Body=data,
+    )
+    return {"PartNumber": part_number, "ETag": response["ETag"]}
+
+
+def complete_multipart_upload(
+    ctx: MultipartUploadContext,
+    parts: list[dict],
+) -> None:
+    """Complete the multipart upload by assembling the given parts."""
+    client = get_s3_client()
+    sorted_parts = sorted(parts, key=lambda p: p["PartNumber"])
+    client.complete_multipart_upload(
+        Bucket=ctx.bucket,
+        Key=ctx.object_key,
+        UploadId=ctx.upload_id,
+        MultipartUpload={"Parts": sorted_parts},
+    )
+
+
+def list_uploaded_parts(
+    ctx: MultipartUploadContext,
+) -> list[dict]:
+    """Return every part that has been uploaded so far."""
+    client = get_s3_client()
+    response = client.list_parts(
+        Bucket=ctx.bucket,
+        Key=ctx.object_key,
+        UploadId=ctx.upload_id,
+    )
+    return [
+        {
+            "PartNumber": p["PartNumber"],
+            "ETag": p["ETag"],
+            "Size": p["Size"],
+        }
+        for p in response.get("Parts", [])
+    ]
+
+
+def abort_multipart_upload(
+    ctx: MultipartUploadContext,
+) -> None:
+    """Abort the multipart upload and discard all uploaded parts."""
+    client = get_s3_client()
+    client.abort_multipart_upload(
+        Bucket=ctx.bucket,
+        Key=ctx.object_key,
+        UploadId=ctx.upload_id,
+    )
+
+
+def build_stored_file_from_multipart(
+    ctx: MultipartUploadContext,
+) -> StoredFileMetadata:
+    """Build a StoredFileMetadata for a completed multipart upload."""
+    uploaded_at = datetime.utcnow().isoformat()
+    return StoredFileMetadata(
+        source=build_object_source(ctx.bucket, ctx.object_key),
+        provider="s3",
+        bucket=ctx.bucket,
+        object_key=ctx.object_key,
+        content_type=guess_content_type(ctx.object_key),
+        file_size=0,  # Will be updated after completion
+        uploaded_at=uploaded_at,
+    )
