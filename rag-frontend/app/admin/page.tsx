@@ -218,7 +218,7 @@ export default function AdminPage() {
   const [uploadPaused, setUploadPaused] = useState(false);
 
   // --- User management ---
-  type UserListItem = { id: string; username: string; role: string; created_at: string };
+  type UserListItem = { id: string; username: string; created_at: string };
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [userTotal, setUserTotal] = useState(0);
   const [userNotice, setUserNotice] = useState<Notice | null>(null);
@@ -226,7 +226,6 @@ export default function AdminPage() {
   const [deletingUserId, setDeletingUserId] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<"user" | "admin">("user");
   const [userPage, setUserPage] = useState(1);
   const USER_PAGE_SIZE = 15;
 
@@ -479,11 +478,6 @@ export default function AdminPage() {
       }
 
       const user = await fetchCurrentUser();
-      if (user.role !== "admin") {
-        router.replace("/");
-        return;
-      }
-
       setCurrentUser(user);
 
       const [knowledgeBaseList, sessionList] = await Promise.all([
@@ -1674,7 +1668,7 @@ export default function AdminPage() {
       const response = await authFetch(`${apiBaseUrl}/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: trimmedName, password: newPassword, role: newRole }),
+        body: JSON.stringify({ username: trimmedName, password: newPassword }),
       });
       const payload = (await response.json()) as UserListItem | { detail?: string };
       if (!response.ok) {
@@ -1684,7 +1678,6 @@ export default function AdminPage() {
       setUserNotice({ type: "success", text: adminMessages.users.createSuccessTemplate.replace("{username}", created.username) });
       setNewUsername("");
       setNewPassword("");
-      setNewRole("user");
       await fetchUsers(userPage, USER_PAGE_SIZE);
     } catch (error) {
       if (error instanceof AuthError) { handleAuthAwareError(error, adminMessages.users.createFailed); return; }
@@ -1820,10 +1813,7 @@ export default function AdminPage() {
             <span className={styles.adminAvatar}>
               {(currentUser?.username || "A").slice(0, 1).toUpperCase()}
             </span>
-            <span>
-              <span className={styles.adminUserName}>{currentUser?.username}</span>
-              <span className={styles.adminUserRole}>{adminMessages.sidebar.adminRole}</span>
-            </span>
+            <span className={styles.adminUserName}>{currentUser?.username}</span>
           </div>
         </div>
       </header>
@@ -2795,7 +2785,7 @@ export default function AdminPage() {
             <section className={styles.card}>
               <div className={styles.cardHeader}>
                 <h3 className={styles.cardTitle}>用户管理</h3>
-                <p className={styles.cardSubtitle}>管理可登录后台的用户，包括管理员和普通用户</p>
+                <p className={styles.cardSubtitle}>创建、查看、删除可登录系统的用户</p>
               </div>
 
               <form className={styles.createToolbar} onSubmit={handleCreateUser}>
@@ -2803,17 +2793,6 @@ export default function AdminPage() {
                 <input id="new-username" className={styles.input} value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="2-100 个字符" />
                 <label className={styles.label} htmlFor="new-password">密码</label>
                 <input id="new-password" className={styles.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少 6 个字符" />
-                <label className={styles.label} htmlFor="new-role">角色</label>
-                <Select
-                  id="new-role"
-                  value={newRole}
-                  onChange={(v) => setNewRole(v as "user" | "admin")}
-                  options={[
-                    { value: "user", label: "普通用户 (user)" },
-                    { value: "admin", label: "管理员 (admin)" },
-                  ]}
-                  placeholder="请选择角色..."
-                />
                 <button className={styles.primaryButton} disabled={creatingUser} type="submit">
                   {creatingUser ? "创建中..." : "创建用户"}
                 </button>
@@ -2824,7 +2803,6 @@ export default function AdminPage() {
                   <thead>
                     <tr>
                       <th>用户名</th>
-                      <th>角色</th>
                       <th>创建时间</th>
                       <th>操作</th>
                     </tr>
@@ -2833,11 +2811,6 @@ export default function AdminPage() {
                     {users.map((user) => (
                       <tr key={user.id}>
                         <td>{user.username}</td>
-                        <td>
-                          <span className={styles.statusBadge}>
-                            {user.role === "admin" ? "管理员" : "普通用户"}
-                          </span>
-                        </td>
                         <td>{new Date(user.created_at).toLocaleString("zh-CN")}</td>
                         <td>
                           <button

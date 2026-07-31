@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.models import ChatMessage, KnowledgeBase, KnowledgeBaseDocument, User
 from app.services.rag_service import get_milvus_client
 from app.services.settings_service import get_retrieval_min_score
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @router.get("/stats")
 def admin_stats(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     kb_count = db.query(KnowledgeBase).count()
     user_count = db.query(User).count()

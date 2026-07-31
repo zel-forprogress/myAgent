@@ -16,7 +16,7 @@ export default function LoginPage() {
   useEffect(() => {
     const auth = getStoredAuth();
     if (auth) {
-      router.replace(auth.user.role === "admin" ? "/admin" : "/");
+      router.replace("/");
     }
   }, [router]);
 
@@ -48,7 +48,7 @@ export default function LoginPage() {
 
       const successPayload = payload as LoginResponse;
       setStoredAuth(successPayload);
-      router.replace(successPayload.user.role === "admin" ? "/admin" : "/");
+      router.replace("/");
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : "登录失败。",
@@ -65,7 +65,7 @@ export default function LoginPage() {
           <p className={styles.eyebrow}>myAgent / Login</p>
           <h1 className={styles.title}>登录知识库 Agent</h1>
           <p className={styles.subtitle}>
-            先登录，再进入聊天页或管理后台。当前开发环境默认内置两个账号。
+            先登录，再进入聊天页或管理后台。当前开发环境默认内置测试账号。
           </p>
         </div>
 
@@ -102,12 +102,12 @@ export default function LoginPage() {
 
         <div className={styles.tips}>
           <div className={styles.tipCard}>
-            <strong>管理员</strong>
+            <strong>测试账号</strong>
             <span>账号：admin</span>
             <span>密码：admin123456</span>
           </div>
           <div className={styles.tipCard}>
-            <strong>普通用户</strong>
+            <strong>测试账号</strong>
             <span>账号：demo</span>
             <span>密码：demo123456</span>
           </div>

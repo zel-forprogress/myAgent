@@ -11,7 +11,6 @@ export type SourceChunk = {
 export type UserResponse = {
   id: string;
   username: string;
-  role: "admin" | "user";
   created_at: string;
 };
 

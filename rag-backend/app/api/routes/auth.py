@@ -29,7 +29,6 @@ def serialize_user(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         username=user.username,
-        role=user.role,
         created_at=user.created_at.isoformat(),
     )
 
@@ -68,7 +67,6 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)) -> UserRes
         db,
         username=request.username.strip(),
         password=request.password,
-        role="user",
     )
     return serialize_user(user)
 

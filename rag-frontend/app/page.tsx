@@ -458,12 +458,10 @@ export default function HomePage() {
               <span className={styles.menuIcon}><MenuIcon variant="chat" /></span>
               {chat.nav.newChat}
             </button>
-            {currentUser?.role === "admin" ? (
-              <Link className={styles.menuItem} href="/admin">
-                <span className={styles.menuIcon}><MenuIcon variant="grid" /></span>
-                {chat.nav.admin}
-              </Link>
-            ) : null}
+            <Link className={styles.menuItem} href="/admin">
+              <span className={styles.menuIcon}><MenuIcon variant="grid" /></span>
+              {chat.nav.admin}
+            </Link>
           </div>
 
           <div className={styles.searchCard}>
@@ -509,7 +507,7 @@ export default function HomePage() {
           <div className={styles.sidebarFooter}>
             <div className={styles.userInfo}>
               <strong>{currentUser?.username || common.unknown}</strong>
-              <span>{currentUser?.role === "admin" ? chat.user.admin : chat.user.regular}</span>
+              <span>{chat.user.regular}</span>
             </div>
             <button className={styles.sidebarLogout} onClick={handleLogout} type="button">{chat.user.logout}</button>
           </div>

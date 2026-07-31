@@ -45,7 +45,6 @@ def create_access_token(user: User) -> str:
     payload = {
         "sub": user.id,
         "username": user.username,
-        "role": user.role,
         "exp": expire_at,
     }
     return jwt.encode(payload, settings.auth_secret_key, algorithm="HS256")
@@ -72,11 +71,10 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
     return user
 
 
-def create_user(db: Session, *, username: str, password: str, role: str) -> User:
+def create_user(db: Session, *, username: str, password: str) -> User:
     user = User(
         username=username,
         password_hash=hash_password(password),
-        role=role,
     )
     db.add(user)
     db.commit()
@@ -91,7 +89,6 @@ def ensure_seed_users(db: Session) -> tuple[User, User]:
             db,
             username=settings.seed_admin_username,
             password=settings.seed_admin_password,
-            role="admin",
         )
 
     demo_user = get_user_by_username(db, settings.seed_user_username)
@@ -100,7 +97,6 @@ def ensure_seed_users(db: Session) -> tuple[User, User]:
             db,
             username=settings.seed_user_username,
             password=settings.seed_user_password,
-            role="user",
         )
 
     return admin, demo_user

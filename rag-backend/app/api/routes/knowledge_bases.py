@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.models import User
 from app.schemas import (
     DeleteKnowledgeBaseResponse,
@@ -56,7 +56,7 @@ def get_knowledge_bases(
 def post_knowledge_base(
     request: KnowledgeBaseCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> KnowledgeBaseResponse:
     try:
         _ = current_user
@@ -88,7 +88,7 @@ def rename_knowledge_base_route(
     knowledge_base_id: str,
     request: KnowledgeBaseRenameRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> KnowledgeBaseResponse:
     try:
         _ = current_user
@@ -113,7 +113,7 @@ def rename_knowledge_base_route(
 def remove_knowledge_base(
     knowledge_base_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> DeleteKnowledgeBaseResponse:
     try:
         _ = current_user

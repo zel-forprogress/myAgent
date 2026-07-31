@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.models import EvaluationCase, User
 from app.schemas import (
     EvaluationCaseCreateRequest,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @router.get("/cases", response_model=list[EvaluationCaseResponse])
 def get_evaluation_cases(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> list[EvaluationCaseResponse]:
     _ = current_user
     return [serialize_evaluation_case(case) for case in list_evaluation_cases(db)]
@@ -37,7 +37,7 @@ def get_evaluation_cases(
 def add_evaluation_case(
     request: EvaluationCaseCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> EvaluationCaseResponse:
     try:
         _ = current_user
@@ -53,7 +53,7 @@ def add_evaluation_case(
 def remove_evaluation_case(
     case_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     _ = current_user
     if not delete_evaluation_case(db, case_id):
@@ -65,7 +65,7 @@ def remove_evaluation_case(
 def run_evaluations(
     request: EvaluationRunRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> EvaluationRunResponse:
     try:
         _ = current_user

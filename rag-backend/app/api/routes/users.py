@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.models import User
 from app.schemas import (
     AdminUserCreateRequest,
@@ -25,7 +25,6 @@ def serialize_user_item(user: User) -> UserListItem:
     return UserListItem(
         id=user.id,
         username=user.username,
-        role=user.role,
         created_at=user.created_at.isoformat(),
     )
 
@@ -35,7 +34,7 @@ def list_users(
     page: int = 1,
     page_size: int = 15,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> UserListResponse:
     total = db.query(User).count()
     offset = (max(page, 1) - 1) * max(page_size, 1)
@@ -58,7 +57,7 @@ def list_users(
 def admin_create_user(
     request: AdminUserCreateRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> UserResponse:
     existing = get_user_by_username(db, request.username.strip())
     if existing is not None:
@@ -71,12 +70,10 @@ def admin_create_user(
         db,
         username=request.username.strip(),
         password=request.password,
-        role=request.role,
     )
     return UserResponse(
         id=user.id,
         username=user.username,
-        role=user.role,
         created_at=user.created_at.isoformat(),
     )
 
@@ -85,7 +82,7 @@ def admin_create_user(
 def delete_user(
     user_id: str,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     user = get_user_by_id(db, user_id)
     if user is None:
@@ -94,7 +91,7 @@ def delete_user(
             detail="User not found",
         )
 
-    if user.id == admin.id:
+    if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account",

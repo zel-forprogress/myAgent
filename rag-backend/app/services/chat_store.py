@@ -40,20 +40,14 @@ def list_chat_sessions(
     offset: int = 0,
     limit: int | None = None,
 ) -> list[ChatSession]:
-    query = db.query(ChatSession)
-    if current_user.role != "admin":
-        query = query.filter(ChatSession.user_id == current_user.id)
-    query = query.order_by(ChatSession.updated_at.desc())
+    query = db.query(ChatSession).order_by(ChatSession.updated_at.desc())
     if limit is not None:
         query = query.offset(offset).limit(limit)
     return query.all()
 
 
 def count_chat_sessions(db: Session, current_user: User) -> int:
-    query = db.query(ChatSession)
-    if current_user.role != "admin":
-        query = query.filter(ChatSession.user_id == current_user.id)
-    return query.count()
+    return db.query(ChatSession).count()
 
 
 def get_chat_session(
@@ -61,10 +55,7 @@ def get_chat_session(
     session_id: str,
     current_user: User | None = None,
 ) -> ChatSession | None:
-    query = db.query(ChatSession).filter(ChatSession.id == session_id)
-    if current_user is not None and current_user.role != "admin":
-        query = query.filter(ChatSession.user_id == current_user.id)
-    return query.first()
+    return db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
 
 def rename_chat_session(db: Session, session: ChatSession, title: str) -> ChatSession:

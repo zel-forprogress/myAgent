@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.core.config import settings
 from app.models import User
 from app.schemas.settings import (
@@ -44,9 +44,9 @@ def _retrieval_settings_response(db: Session) -> RetrievalSettingsResponse:
 @router.get("/rerank", response_model=RerankSettingsResponse)
 def get_admin_rerank_settings(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> RerankSettingsResponse:
-    _ = admin
+    _ = current_user
     return _rerank_settings_response(db)
 
 
@@ -54,9 +54,9 @@ def get_admin_rerank_settings(
 def update_admin_rerank_settings(
     request: RerankSettingsUpdateRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> RerankSettingsResponse:
-    _ = admin
+    _ = current_user
     set_rerank_enabled(db, request.enabled)
     return _rerank_settings_response(db)
 
@@ -64,9 +64,9 @@ def update_admin_rerank_settings(
 @router.get("/retrieval", response_model=RetrievalSettingsResponse)
 def get_admin_retrieval_settings(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> RetrievalSettingsResponse:
-    _ = admin
+    _ = current_user
     return _retrieval_settings_response(db)
 
 
@@ -74,8 +74,8 @@ def get_admin_retrieval_settings(
 def update_admin_retrieval_settings(
     request: RetrievalSettingsUpdateRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> RetrievalSettingsResponse:
-    _ = admin
+    _ = current_user
     set_retrieval_min_score(db, request.min_score)
     return _retrieval_settings_response(db)

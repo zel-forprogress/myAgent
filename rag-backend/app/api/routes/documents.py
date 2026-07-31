@@ -4,7 +4,7 @@ from time import perf_counter
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, require_admin
+from app.api.dependencies import get_current_user, get_db
 from app.core.config import settings
 from app.models import User
 from app.schemas import (
@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 def test_retrieval(
     request: RetrievalTestRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> RetrievalTestResponse:
     try:
         _ = current_user
@@ -139,7 +139,7 @@ def test_retrieval(
 def ingest(
     request: IngestRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestResponse:
     try:
         _ = current_user
@@ -222,7 +222,7 @@ async def ingest_upload(
     knowledge_base_id: str | None = Form(default=None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestResponse:
     try:
         _ = current_user
@@ -316,7 +316,7 @@ def documents(
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentsResponse:
     try:
         _ = current_user
@@ -345,7 +345,7 @@ def ingestion_tasks(
     source: str | None = None,
     limit: int = 20,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestionTaskListResponse:
     try:
         _ = current_user
@@ -368,7 +368,7 @@ def ingestion_tasks(
 def ingestion_task_detail(
     task_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestionTaskResponse:
     try:
         _ = current_user
@@ -387,7 +387,7 @@ def ingestion_task_detail(
 def retry_ingestion_task(
     task_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestionTaskResponse:
     try:
         _ = current_user
@@ -420,7 +420,7 @@ def retry_ingestion_task(
 def cancel_ingestion_task(
     task_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestionTaskResponse:
     try:
         _ = current_user
@@ -460,7 +460,7 @@ def cancel_ingestion_task(
 def chunk_document(
     request: DeleteDocumentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestResponse:
     try:
         _ = current_user
@@ -508,7 +508,7 @@ def document_chunks(
     knowledge_base_id: str,
     source: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         _ = current_user
@@ -541,7 +541,7 @@ def document_chunks(
 def delete_documents(
     request: DeleteDocumentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> DeleteDocumentResponse:
     try:
         _ = current_user
@@ -593,7 +593,7 @@ def multipart_init(
     filename: str = Form(...),
     file_size: int = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> MultipartInitResponse:
     try:
         _ = current_user
@@ -644,7 +644,7 @@ async def multipart_upload_part(
     object_key: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> MultipartPartResponse:
     try:
         _ = current_user
@@ -675,7 +675,7 @@ def multipart_complete(
     upload_id: str,
     request: MultipartCompleteRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> IngestResponse:
     try:
         _ = current_user
@@ -767,7 +767,7 @@ def multipart_list_parts(
     bucket: str = "",
     object_key: str = "",
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> MultipartListResponse:
     try:
         _ = current_user
@@ -790,7 +790,7 @@ def multipart_abort(
     bucket: str = "",
     object_key: str = "",
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> MultipartAbortResponse:
     try:
         _ = current_user
